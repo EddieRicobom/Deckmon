@@ -1,0 +1,407 @@
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  display: block;
+}
+
+.d3-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e8ecf5;
+  background: radial-gradient(ellipse at 50% 35%, #1d2a4d 0%, #0b1020 55%, #05070d 100%);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+// Header
+
+.d3-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+}
+
+.d3-title {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9fb0d0;
+
+  strong {
+    color: #fff;
+  }
+}
+
+.d3-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.d3-btn {
+  height: 34px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8ecf5;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &[aria-pressed='true'] {
+    background: #e8ecf5;
+    color: #0b1020;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 2px;
+  }
+}
+
+.d3-empty {
+  margin: auto;
+  color: #9fb0d0;
+}
+
+.d3-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  margin: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #7f8fb0;
+  pointer-events: none;
+}
+
+// Carousel
+
+.d3-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  perspective: 1400px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.d3-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+// Grid
+
+.d3-grid {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 170px));
+  justify-content: center;
+  gap: 18px 14px;
+  padding: 8px 16px 40px;
+  touch-action: pan-y;
+}
+
+// Card wrapper (positions the card in the ring or grid)
+
+.card3d {
+  position: absolute;
+  left: 0;
+  top: 0;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  outline: none;
+
+  &:focus-visible .tilt {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 6px;
+    border-radius: 4.5%;
+  }
+
+  &.flat {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: 100%;
+    aspect-ratio: 63 / 88;
+  }
+}
+
+// Tilt: pointer-driven rotation via --rx / --ry, idle sway for the front card
+
+.tilt {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  --mx: 50;
+  --my: 50;
+  --posx: 50;
+  --posy: 50;
+  --hyp: 0;
+  --rx: 0deg;
+  --ry: 0deg;
+
+  &.is-active,
+  &.is-focus {
+    will-change: transform;
+  }
+
+  &.is-front:not(.is-active) {
+    animation: d3-idle-sway 7s ease-in-out infinite;
+  }
+}
+
+@keyframes d3-idle-sway {
+  0%,
+  100% {
+    transform: perspective(900px) rotateX(-3deg) rotateY(-7deg);
+  }
+  50% {
+    transform: perspective(900px) rotateX(3deg) rotateY(7deg);
+  }
+}
+
+@keyframes d3-shimmer {
+  from {
+    background-position: 0% 50%, 0% 50%;
+  }
+  to {
+    background-position: 100% 50%, 100% 50%;
+  }
+}
+
+// Flip: front and CSS-drawn back
+
+.flip {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &.is-flipped {
+    transform: rotateY(180deg);
+  }
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  border-radius: 4.5% / 3.2%;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: #0c1220;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.front {
+  transform: rotateY(0deg);
+}
+
+.back {
+  transform: rotateY(180deg);
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4%;
+  background: radial-gradient(circle at 50% 40%, #3b63c4 0%, #1b2f63 45%, #0a1230 100%);
+  box-shadow: inset 0 0 0 3px #c9a24a, inset 0 0 0 5px rgba(10, 18, 48, 0.9);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 7%;
+    border: 1px solid rgba(201, 162, 74, 0.55);
+    border-radius: 6%;
+    background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0 6px, transparent 6px 12px);
+  }
+}
+
+.back-title {
+  position: relative;
+  font: 900 15cqw/1 'Arial Black', Impact, sans-serif;
+  letter-spacing: 0.06em;
+  color: #f5d98a;
+  text-shadow: 0 2px 0 #7a5a18, 0 0 18px rgba(245, 217, 138, 0.45);
+}
+
+.back-sub {
+  position: relative;
+  font: 700 6cqw/1 system-ui, sans-serif;
+  letter-spacing: 0.4em;
+  color: #c9d7f5;
+}
+
+.art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(5, 8, 18, 0.82);
+  color: #fff;
+  font: 700 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+}
+
+// Holo layers. Common cards get the glare only.
+
+.shine,
+.glare,
+.sparkle {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.shine {
+  display: none;
+  background-image: repeating-linear-gradient(115deg, transparent 0 22%, rgba(255, 255, 255, 0.28) 32%, transparent 42%),
+    linear-gradient(115deg, #ff5e8a, #ffd166 16%, #6ee7b7 33%, #60a5fa 50%, #c084fc 66%, #f472b6 83%, #ffd166);
+  background-size: 250% 250%, 300% 300%;
+  background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%), calc(var(--posx) * 1%) calc(var(--posy) * 1%);
+  mix-blend-mode: color-dodge;
+  filter: brightness(1.05) contrast(1.15);
+}
+
+.glare {
+  background: radial-gradient(
+    circle at calc(var(--mx) * 1%) calc(var(--my) * 1%),
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.12) 35%,
+    transparent 65%
+  );
+  mix-blend-mode: overlay;
+  opacity: calc(0.35 + var(--hyp) * 0.5);
+}
+
+.sparkle {
+  display: none;
+  background-image: radial-gradient(circle, #fff 0 0.6px, transparent 1.2px),
+    radial-gradient(circle, #fde68a 0 0.8px, transparent 1.5px),
+    radial-gradient(circle, #a5f3fc 0 0.5px, transparent 1.1px);
+  background-size: 23px 31px, 37px 43px, 17px 19px;
+  background-position: calc(100% - var(--posx) * 1%) calc(100% - var(--posy) * 1%),
+    calc(var(--posx) * 0.5%) calc(var(--posy) * 0.5%), 0 0;
+  mix-blend-mode: color-dodge;
+}
+
+.face.tier-rare .shine {
+  display: block;
+  opacity: calc(0.3 + var(--hyp) * 0.6);
+}
+
+.face.tier-super .shine {
+  display: block;
+  opacity: calc(0.45 + var(--hyp) * 0.6);
+}
+
+.face.tier-super .sparkle {
+  display: block;
+  opacity: calc(0.45 + var(--hyp) * 0.5);
+}
+
+// Idle shimmer only on the card that faces the viewer (carousel) when not pointed at.
+.tilt.is-front:not(.is-active) .face.tier-super .shine {
+  animation: d3-shimmer 4s ease-in-out infinite alternate;
+}
+
+// Focus overlay (card flies forward to the centre)
+
+.d3-focus {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  perspective: 1200px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(40, 60, 120, 0.55), rgba(3, 5, 12, 0.92) 70%);
+  animation: d3-fade 0.25s ease both;
+}
+
+.d3-focus-card {
+  position: relative;
+  width: min(74vw, calc(66vh * 63 / 88));
+  aspect-ratio: 63 / 88;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  outline: none;
+  animation: d3-fly-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  &:focus-visible .tilt {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 6px;
+    border-radius: 4.5%;
+  }
+}
+
+@keyframes d3-fly-in {
+  from {
+    opacity: 0;
+    transform: translateZ(-700px) rotateY(-55deg) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes d3-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt,
+  .tilt.is-front,
+  .flip,
+  .d3-focus,
+  .d3-focus-card,
+  .face.tier-super .shine {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -18,6 +18,7 @@ import { SaveStore } from '@store';
 import { WebsiteStore } from '@store';
 import { CardMarketService } from '../../../services/card-market.service';
 import { ImportDeckDialogComponent } from '../../shared/dialogs/import-deck-dialog.component';
+import { Deck3dViewerComponent } from './deck-3d-viewer.component';
 
 @Component({
   selector: 'digimon-deck-toolbar',
@@ -75,6 +76,16 @@ import { ImportDeckDialogComponent } from '../../shared/dialogs/import-deck-dial
         iconPos="left"
         pButton
         pTooltip="Click to hide/show deck statistics!"
+        tooltipPosition="top"></button>
+
+      <button
+        (click)="view3dOpen = true"
+        class="p-button-outlined h-[30px] flex-1 min-w-fit px-2 text-xs"
+        label="3D"
+        icon="pi pi-clone"
+        iconPos="left"
+        pButton
+        pTooltip="Show your deck as 3D holo cards!"
         tooltipPosition="top"></button>
 
       <button
@@ -152,6 +163,10 @@ import { ImportDeckDialogComponent } from '../../shared/dialogs/import-deck-dial
       icon="pi pi-file"
       key="NewDeck"
       rejectButtonStyleClass="p-button-outlined"></p-confirmDialog>
+
+    @if (view3dOpen) {
+      <digimon-deck-3d-viewer [cards]="mainDeck()" (closed)="view3dOpen = false"></digimon-deck-3d-viewer>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
@@ -165,6 +180,7 @@ import { ImportDeckDialogComponent } from '../../shared/dialogs/import-deck-dial
     ConfirmDialogModule,
     CurrencyPipe,
     OverlayZoneFixDirective,
+    Deck3dViewerComponent,
   ],
   providers: [MessageService],
 })
@@ -194,6 +210,7 @@ export class DeckToolbarComponent {
   importDeckDialog = false;
   priceCheckDialog = false;
   simulateDialog = false;
+  view3dOpen = false;
   checkPrice$ = new BehaviorSubject(false);
 
   securityStack: DigimonCard[];
