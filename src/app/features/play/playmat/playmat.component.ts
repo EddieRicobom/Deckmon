@@ -245,7 +245,47 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
       }
 
       @if (s.pending; as p) {
-        @if (p.kind === 'block' && canDecide(p.owner)) {
+        @if (p.kind === 'effect' && canDecide(p.owner)) {
+          <div class="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="effect-title">
+            <div class="w-full max-w-md rounded-xl border border-accent bg-ink-1 p-4 text-sm text-fg">
+              <h2 id="effect-title" class="m-0 text-base font-semibold">{{ p.cardName }}</h2>
+              <p class="mt-1 text-muted">{{ p.prompt }}</p>
+              @if (p.mode === 'confirm') {
+                <div class="mt-3 flex gap-2">
+                  <button type="button" class="btn-play flex-1" (click)="answerEffect(true)">Resolve</button>
+                  <button type="button" class="btn-play flex-1" (click)="answerEffect(false)">Skip (optional)</button>
+                </div>
+              } @else {
+                <ul class="m-0 mt-3 flex list-none flex-col gap-1.5 p-0">
+                  @for (o of p.options; track o.id; let i = $index) {
+                    <li>
+                      <button
+                        type="button"
+                        class="btn-play w-full justify-between"
+                        [attr.aria-pressed]="effectPicks().includes(o.id)"
+                        (click)="togglePick(o.id)">
+                        <span class="truncate">{{ o.label || (o.zone === 'hand' ? 'Card in hand' : o.zone === 'reveal' ? 'Revealed card' : 'Card') + ' ' + (i + 1) }}</span>
+                        <span class="font-mono">{{ effectPicks().includes(o.id) ? 'Selected' : o.zone }}</span>
+                      </button>
+                    </li>
+                  }
+                </ul>
+                <p class="mt-2 text-xs text-muted">Choose {{ p.min === p.max ? p.min : p.min + ' to ' + p.max }}.</p>
+                <button
+                  type="button"
+                  class="btn-play mt-2 w-full"
+                  [disabled]="effectPicks().length < p.min || effectPicks().length > p.max"
+                  (click)="answerEffect(undefined)">
+                  Confirm
+                </button>
+              }
+            </div>
+          </div>
+        } @else if (p.kind === 'effect') {
+          <div class="fixed inset-x-2 top-14 z-[450] mx-auto flex max-w-md items-center gap-2 rounded-lg border border-accent bg-ink-1 p-3 text-sm text-fg" role="status">
+            Waiting for {{ s.players[p.owner].name }} to resolve {{ p.cardName }}.
+          </div>
+        } @else if (p.kind === 'block' && canDecide(p.owner)) {
           <div class="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="block-title">
             <div class="w-full max-w-md rounded-xl border border-accent bg-ink-1 p-4 text-sm text-fg">
               <h2 id="block-title" class="m-0 text-base font-semibold">Block the attack?</h2>
@@ -1235,6 +1275,25 @@ export class PlaymatComponent implements OnInit {
   }
 
   /** Online each device answers only its own decisions. Solo answers for both seats. */
+  /** Ids picked so far for the open effect choice. Cleared whenever a choice is answered. */
+  protected readonly effectPicks = signal<string[]>([]);
+
+  protected togglePick(id: string): void {
+    this.effectPicks.update((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+  }
+
+  /** Answers the open effect choice: `true`/`false` for "you may", or the picked ids when `undefined`. */
+  protected answerEffect(answer: boolean | undefined): void {
+    const pending = this.session.state()?.pending;
+    if (!pending || pending.kind !== 'effect') return;
+    const cmd: Command =
+      answer === undefined
+        ? { type: 'resolveEffect', player: pending.owner, picks: this.effectPicks() }
+        : { type: 'resolveEffect', player: pending.owner, yes: answer };
+    this.effectPicks.set([]);
+    this.act(cmd);
+  }
+
   protected canDecide(owner: PlayerIndex): boolean {
     const local = this.session.localPlayer();
     return local === null || local === owner;
