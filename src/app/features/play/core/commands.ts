@@ -5,12 +5,22 @@
  * `player` is always the BOARD OWNER whose cards / stacks are affected. In solo mode the same
  * person may issue commands for either board.
  */
-import type { PlayerIndex, Zone } from './types';
+import type { PlayerIndex, PlayerState, Zone } from './types';
 
 export type Destination = Zone;
 
 interface Base {
   player: PlayerIndex;
+  /**
+   * Wire only (never set locally). uid -> real cardId for cards this command makes public. The receiving
+   * peer fills them into its placeholder ('?') cards before applying the command.
+   */
+  reveals?: Record<string, string>;
+  /**
+   * Wire only. The owner's redacted board after a command the receiver cannot replay (it depends on the owner's
+   * PRNG: setup, mulligan, shuffleDeck). Replaces the receiver's placeholder board after the command is applied.
+   */
+  board?: PlayerState;
 }
 
 export type Command =

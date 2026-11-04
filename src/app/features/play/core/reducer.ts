@@ -3,8 +3,9 @@
  * Invalid commands throw an Error with a readable message; callers should catch and show it.
  */
 import { Command } from './commands';
-import { dealBoard, getStack, locateCard, locateStack, pileOf, cloneState } from './game';
+import { allCards, dealBoard, getStack, locateCard, locateStack, pileOf, cloneState } from './game';
 import { shuffle } from './rng';
+import { HIDDEN_CARD_ID } from './view';
 import {
   CardRef,
   GameState,
@@ -33,6 +34,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
   const state = cloneState(input);
   const p = state.players[cmd.player];
   const who = p.name;
+  if (cmd.reveals) applyReveals(p, cmd.reveals);
 
   const say = (text: string) => {
     state.log.push({ seq: state.log.length, turn: state.turn, player: cmd.player, text });
@@ -274,12 +276,22 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     }
   }
 
+  if (cmd.board) state.players[cmd.player] = JSON.parse(JSON.stringify(cmd.board)) as PlayerState;
   return state;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Helpers (operate on the cloned player, so mutation is safe)
 // ---------------------------------------------------------------------------------------------
+
+/** Fills placeholder ('?') cards on the owner's board with the cardIds the sender revealed. */
+function applyReveals(p: PlayerState, reveals: Record<string, string>): void {
+  for (const card of allCards(p)) {
+    if (card.cardId === HIDDEN_CARD_ID && Object.prototype.hasOwnProperty.call(reveals, card.uid)) {
+      card.cardId = reveals[card.uid];
+    }
+  }
+}
 
 function drawCards(p: PlayerState, count: number): void {
   for (let i = 0; i < count && p.deck.length > 0; i++) {

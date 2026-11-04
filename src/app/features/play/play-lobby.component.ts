@@ -6,6 +6,7 @@ import { SaveStore } from '../../store/save.store';
 import { DeckListEntry } from './core/game';
 import { GameSession } from './game-session.service';
 import { deckLabel, randomStarterDeck, toDeckList } from './deck-source';
+import { OnlinePanelComponent } from './online-panel.component';
 
 const RANDOM_OPPONENT = 'random';
 const STARTER_OPPONENT = 'starter';
@@ -14,7 +15,7 @@ const STARTER_OPPONENT = 'starter';
   selector: 'digimon-play-lobby',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [PageComponent, RouterLink],
+  imports: [PageComponent, RouterLink, OnlinePanelComponent],
   template: `
     <digimon-page>
       <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 self-start px-4 py-6 md:px-6">
@@ -95,12 +96,17 @@ const STARTER_OPPONENT = 'starter';
           </button>
           <button
             type="button"
-            class="flex flex-col gap-1 rounded-xl border border-line bg-ink-1 p-4 text-left text-fg opacity-60"
-            disabled>
+            class="flex flex-col gap-1 rounded-xl border border-line bg-ink-1 p-4 text-left text-fg hover:bg-ink-2"
+            [attr.aria-expanded]="showOnline()"
+            (click)="showOnline.set(!showOnline())">
             <span class="font-semibold">Online PvP</span>
-            <span class="text-xs text-muted">Coming soon</span>
+            <span class="text-xs text-muted">Host or join a room. Hidden cards stay hidden.</span>
           </button>
         </section>
+
+        @if (showOnline()) {
+          <digimon-online-panel [entries]="myEntries()" [deckName]="myDeckName()" />
+        }
       </div>
     </digimon-page>
   `,
@@ -122,6 +128,17 @@ export class PlayLobbyComponent {
   protected readonly myDeck = computed(() => this.decks().find((d) => d.id === this.myDeckId()) ?? this.decks()[0] ?? null);
 
   protected readonly deckLabel = deckLabel;
+  protected readonly showOnline = signal(false);
+  /** The deck list the online match uses: the selected saved deck, or a random starter when there is none. */
+  protected readonly myEntries = computed<DeckListEntry[]>(() => {
+    const deck = this.myDeck();
+    if (deck) return toDeckList(deck.cards, this.cardStore.cardsMap());
+    return this.cardsReady() ? randomStarterDeck(this.cardStore.cards()) : [];
+  });
+  protected readonly myDeckName = computed(() => {
+    const deck = this.myDeck();
+    return deck ? deckLabel(deck) : 'Random starter deck';
+  });
 
   protected cardTotal(cards: { count: number }[]): number {
     return cards.reduce((n, c) => n + c.count, 0);

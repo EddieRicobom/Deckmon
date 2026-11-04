@@ -8,6 +8,7 @@ import { GameState, MEMORY_MAX, MEMORY_MIN, PHASES, Phase, PlayerIndex } from '.
 import { redactFor } from '../core/view';
 import { GameSession } from '../game-session.service';
 import { menuItemsFor, MenuItem, MenuTarget } from './menu-items';
+import { OnlineBarComponent } from './online-bar.component';
 import { PlayerBoardComponent } from './player-board.component';
 
 interface OpenMenu {
@@ -30,7 +31,7 @@ const MEMORY_VALUES = Array.from({ length: MEMORY_MAX - MEMORY_MIN + 1 }, (_, i)
   selector: 'digimon-playmat',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [NgClass, RouterLink, PlayerBoardComponent, HoloCard3dComponent],
+  imports: [NgClass, RouterLink, PlayerBoardComponent, HoloCard3dComponent, OnlineBarComponent],
   template: `
     @if (state(); as s) {
       <div
@@ -67,6 +68,8 @@ const MEMORY_VALUES = Array.from({ length: MEMORY_MAX - MEMORY_MIN + 1 }, (_, i)
             <button type="button" class="btn-play" (click)="toLobby()">Lobby</button>
           </div>
         </header>
+
+        <digimon-online-bar />
 
         @if (session.lastError(); as err) {
           <button

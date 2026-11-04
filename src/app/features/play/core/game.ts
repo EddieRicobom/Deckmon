@@ -48,6 +48,22 @@ export function expandDeck(player: PlayerIndex, entries: readonly DeckListEntry[
   return { main, eggs };
 }
 
+/** Every card on one board, whatever the zone. */
+export function allCards(p: PlayerState): CardRef[] {
+  return [
+    ...p.deck,
+    ...p.eggDeck,
+    ...p.hand,
+    ...p.security,
+    ...p.trash,
+    ...p.reveal,
+    ...(p.breeding ? p.breeding.cards : []),
+    ...p.battle.flatMap((s) => s.cards),
+    ...p.tamer.flatMap((s) => s.cards),
+    ...p.option.flatMap((s) => s.cards),
+  ];
+}
+
 /** Collects every card the owner has on their board, face-up or not, back into deck / egg deck. */
 function gatherAll(p: PlayerState): { main: CardRef[]; eggs: CardRef[] } {
   const all: CardRef[] = [

@@ -17,7 +17,13 @@ export type NetMessage =
   | { t: 'reveal'; uids: string[]; cardIds: string[] }
   | { t: 'ping' }
   | { t: 'pong' }
-  | { t: 'resign' };
+  | { t: 'resign' }
+  /** Opening handshake: the sender's own board, redacted. Sent once per game, after `hello`. */
+  | { t: 'setup'; board: unknown }
+  /** Takes back the sender's last command. `count` is the sender's command count before the undo. */
+  | { t: 'undo'; count: number }
+  /** Active player's resynchronisation: shared fields plus its own redacted board. */
+  | { t: 'resync'; payload: unknown };
 
 /** Hard limits for anything that arrives from the other device (it is never trusted). */
 export const MAX_FRAME_CHARS = 32 * 1024;
@@ -86,6 +92,20 @@ export function decodeNetMessage(raw: string): NetMessage | null {
       return { t: 'pong' };
     case 'resign':
       return { t: 'resign' };
+    case 'setup': {
+      const board = o['board'];
+      if (!board || typeof board !== 'object' || Array.isArray(board)) return null;
+      return { t: 'setup', board };
+    }
+    case 'undo': {
+      const count = uint(o['count']);
+      return count === null ? null : { t: 'undo', count };
+    }
+    case 'resync': {
+      const payload = o['payload'];
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+      return { t: 'resync', payload };
+    }
     default:
       return null;
   }
