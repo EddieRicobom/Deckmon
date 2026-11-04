@@ -14,12 +14,12 @@ import {
   ViewChild,
 } from '@angular/core';
 import { DigimonCard, IDeckCard } from '@models';
-import { HoloTier, holoTierOf } from '../../shared/holo-card-3d.component';
+import { HoloFx, holoClassesOf } from '../../shared/holo-card-3d.component';
 
 export interface Deck3DEntry {
   card: DigimonCard;
   count: number;
-  tier: HoloTier;
+  fx: HoloFx;
 }
 
 interface TiltSpring {
@@ -48,7 +48,7 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
     if (existing) {
       existing.count += card.count;
     } else {
-      byId.set(card.id, { card, count: card.count, tier: holoTierOf(card) });
+      byId.set(card.id, { card, count: card.count, fx: holoClassesOf(card) });
     }
   }
   return [...byId.values()];
@@ -134,7 +134,7 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
     <ng-template #holoTpl let-entry let-focus="focus">
       <div class="tilt" [class.is-focus]="focus">
         <div class="flip" [class.is-flipped]="focus && flipped">
-          <div class="face front" [class]="'holo-' + entry.tier">
+          <div class="face front" [class]="entry.fx.classes" [attr.style]="entry.fx.style">
             <img
               class="art"
               [src]="entry.card.cardImage"
@@ -144,6 +144,8 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
               draggable="false" />
             <div class="shine"></div>
             <div class="fx"></div>
+            <div class="grid"></div>
+            <div class="mesh"></div>
             <div class="glare"></div>
             <div class="sparkle"></div>
             @if (entry.count > 1) {

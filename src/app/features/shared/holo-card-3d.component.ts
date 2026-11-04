@@ -32,6 +32,56 @@ const clamp = (value: number, min: number, max: number): number => Math.min(max,
 // card's `version` is "Normal", so the variant is what makes an alt-art print show as 'aa'.
 const ALT_PRINTING = /Alternative|Textured|Foil|Stamp|Box Topper/i;
 
+/** digimon = Digivolution mesh, tamer = concentric crest, option = energy slashes, egg = hex shell. */
+export type HoloCategory = 'digimon' | 'tamer' | 'option' | 'egg';
+
+export interface HoloFx {
+  tier: HoloTier;
+  category: HoloCategory;
+  /** Classes for the .face element, for example "holo-sr type-digimon". */
+  classes: string;
+  /** Inline custom properties for the .face element: --tint and --tint2 (multicolour). */
+  style: string;
+}
+
+// Colour names as they appear in card.color. Black is lifted so its glow still reads on dark frames.
+const TINT_BY_COLOUR: Record<string, string> = {
+  red: '#ff4d5e',
+  blue: '#3aa0ff',
+  yellow: '#ffd23f',
+  green: '#3ddc84',
+  black: '#9b8cc4',
+  purple: '#b76bff',
+  white: '#f4f7ff',
+};
+const DEFAULT_TINT = '#86ffc0';
+
+/** Primary and secondary tint from card.color ("Red/Black" gives red and black). */
+export function holoTintsOf(card: DigimonCard): [string, string] {
+  const tints = (card.color || '')
+    .split('/')
+    .map((c) => TINT_BY_COLOUR[c.trim().toLowerCase()])
+    .filter((c): c is string => !!c);
+  const first = tints[0] ?? DEFAULT_TINT;
+  return [first, tints[1] ?? first];
+}
+
+export function holoCategoryOf(card: DigimonCard): HoloCategory {
+  const type = (card.cardType || '').toLowerCase();
+  if (type.startsWith('digi-egg')) return 'egg';
+  if (type === 'tamer') return 'tamer';
+  if (type === 'option') return 'option';
+  return 'digimon';
+}
+
+/** Tier, category and colour for one face. Use `classes` and `style` on the .face element. */
+export function holoClassesOf(card: DigimonCard, variant?: string): HoloFx {
+  const tier = holoTierOf(card, variant);
+  const category = holoCategoryOf(card);
+  const [tint, tint2] = holoTintsOf(card);
+  return { tier, category, classes: `holo-${tier} type-${category}`, style: `--tint:${tint};--tint2:${tint2}` };
+}
+
 export function holoTierOf(card: DigimonCard, variant?: string): HoloTier {
   if (ALT_PRINTING.test(`${variant ?? ''} ${card.version ?? ''}`)) return 'aa';
   switch ((card.rarity || '').toUpperCase()) {
@@ -67,6 +117,7 @@ export function holoTierOf(card: DigimonCard, variant?: string): HoloTier {
     <div
       #tilt
       class="tilt is-live"
+      [class.intro]="intro"
       role="button"
       tabindex="0"
       [attr.aria-label]="card.name.english + (flipped ? ' (back, click to show front)' : ' (click to flip)')"
@@ -74,7 +125,7 @@ export function holoTierOf(card: DigimonCard, variant?: string): HoloTier {
       (keydown.enter)="onKey($event)"
       (keydown.space)="onKey($event)">
       <div class="flip" [class.is-flipped]="flipped">
-        <div class="face front" [class]="'holo-' + tier">
+        <div class="face front" [class]="fx.classes" [attr.style]="fx.style">
           <img
             class="art"
             [digimonImgFallback]="imageSrc"
@@ -84,6 +135,8 @@ export function holoTierOf(card: DigimonCard, variant?: string): HoloTier {
             draggable="false" />
           <div class="shine"></div>
           <div class="fx"></div>
+          <div class="grid"></div>
+          <div class="mesh"></div>
           <div class="glare"></div>
           <div class="sparkle"></div>
         </div>
@@ -103,6 +156,8 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   @Input() size?: number;
   /** Printing type of the shown art (for example an alt-art type string). Makes alt-art prints use the 'aa' foil. */
   @Input() variant?: string;
+  /** Plays the one-shot digivolve intro (grid sweep, mesh flash, art fade-in) when set at creation. */
+  @Input() intro = false;
 
   @ViewChild('tilt', { static: true }) tiltRef!: ElementRef<HTMLElement>;
 
@@ -111,7 +166,7 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   private readonly spring: TiltSpring = { x: 0, y: 0, tx: 0, ty: 0 };
   private frame = 0;
 
-  tier: HoloTier = 'c';
+  fx: HoloFx = { tier: 'c', category: 'digimon', classes: 'holo-c type-digimon', style: `--tint:${DEFAULT_TINT};--tint2:${DEFAULT_TINT}` };
   flipped = false;
 
   get imageSrc(): string {
@@ -124,7 +179,7 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
 
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['card'] || changes['variant']) && this.card) {
-      this.tier = holoTierOf(this.card, this.variant);
+      this.fx = holoClassesOf(this.card, this.variant);
       if (!changes['card'].firstChange) this.flipped = false;
     }
   }

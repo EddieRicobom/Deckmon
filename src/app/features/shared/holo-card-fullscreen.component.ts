@@ -28,7 +28,7 @@ import { HoloCard3dComponent } from './holo-card-3d.component';
     <div class="hf-backdrop" (click)="closed.emit()">
       <button #closeBtn type="button" class="hf-close" aria-label="Close 3D view" (click)="$event.stopPropagation(); closed.emit()">Close</button>
       <div class="hf-stage" (click)="$event.stopPropagation()">
-        <digimon-holo-card-3d [card]="card"></digimon-holo-card-3d>
+        <digimon-holo-card-3d [card]="card" [intro]="true"></digimon-holo-card-3d>
       </div>
       <p class="hf-hint">Move over the card to tilt · click to flip · Esc or click outside to close</p>
     </div>
