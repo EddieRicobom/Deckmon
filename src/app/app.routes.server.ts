@@ -9,5 +9,8 @@ export const serverRoutes: ServerRoute[] = [
   { path: 'decks', renderMode: RenderMode.Prerender },
   { path: 'rulings', renderMode: RenderMode.Prerender },
   { path: 'products', renderMode: RenderMode.Prerender },
+  // Play is a personal, interactive table: rendered in the browser only.
+  { path: 'play', renderMode: RenderMode.Client },
+  { path: 'play/table', renderMode: RenderMode.Client },
   { path: '**', renderMode: RenderMode.Client },
 ];

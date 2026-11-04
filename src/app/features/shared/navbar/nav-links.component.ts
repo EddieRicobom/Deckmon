@@ -202,6 +202,7 @@ export class NavLinksComponent {
     { url: '/user', label: 'Profile', icon: 'pi-user' },
     { url: '/decks', label: 'Decks', icon: 'pi-table' },
     { url: '/rulings', label: 'Rulings', icon: 'pi-question-circle' },
+    { url: '/play', label: 'Play', icon: 'pi-play' },
     { url: '/products', label: 'Products', icon: 'pi-tags' },
   ];
   dialogStore = inject(DialogStore);

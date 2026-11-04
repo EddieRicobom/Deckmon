@@ -65,6 +65,14 @@ export const routes: Routes = [
     path: 'price-compare',
     loadComponent: () => import('./features/price-compare/price-compare.component').then(m => m.PriceCompareComponent),
   },
+  {
+    path: 'play',
+    loadComponent: () => import('./features/play/play-lobby.component').then(m => m.PlayLobbyComponent),
+  },
+  {
+    path: 'play/table',
+    loadComponent: () => import('./features/play/playmat/playmat.component').then(m => m.PlaymatComponent),
+  },
   { path: '', pathMatch: 'full', loadComponent: () => import('./features/home/home-page.component').then(m => m.HomePageComponent) },
   { path: '**', loadComponent: () => import('./features/home/home-page.component').then(m => m.HomePageComponent) },
 ];
