@@ -1,7 +1,6 @@
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, input } from '@angular/core';
-import { DigimonCard } from '../../../../models';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
 import { Command } from '../core/commands';
 import { PlayerIndex, PlayerState, Stack, StackZone, Zone } from '../core/types';
@@ -21,6 +20,16 @@ export type DragData =
   { kind: 'card'; owner: PlayerIndex; uid: string; from: Zone } | { kind: 'stack'; owner: PlayerIndex; stackId: string; from: StackZone };
 
 const LONG_PRESS_MS = 450;
+/** Pointer travel in px above which a press counts as a drag, so its click does not pin. */
+const DRAG_SLOP_PX = 6;
+/** Deck counts at or below this are shown as a warning. */
+const DECK_WARN_AT = 5;
+
+/** What the pointer is over: the visible card id (null when hidden) and the stack or card it belongs to. */
+export interface HoverInfo {
+  cardId: string | null;
+  target: MenuTarget;
+}
 const HAND_OVERLAP = 'calc(var(--cw) * -0.42)';
 
 /**
@@ -89,10 +98,18 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
             <span class="rounded bg-accent px-1.5 py-0.5 text-[10px] font-bold uppercase text-accent-ink">Active</span>
           }
         </span>
-        <span class="font-mono"
-          >Hand {{ player().hand.length }} · Deck {{ player().deck.length }} · Egg {{ player().eggDeck.length }} · Trash
-          {{ player().trash.length }}</span
-        >
+        <span class="flex flex-wrap items-center justify-end gap-x-2 font-mono">
+          <span>Hand {{ player().hand.length }}</span>
+          <span
+            [class.text-amber-300]="deckWarn()"
+            [class.text-red-400]="player().deck.length === 0"
+            [class.font-bold]="deckWarn() || player().deck.length === 0"
+            >Deck {{ player().deck.length }}</span
+          >
+          <span>Egg {{ player().eggDeck.length }}</span>
+          <span>Trash {{ player().trash.length }}</span>
+          <span>Security {{ player().security.length }}</span>
+        </span>
       </header>
 
       <div class="flex gap-2 md:gap-3" [class.flex-row-reverse]="mirrored()">
@@ -105,13 +122,15 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
                 cdkDrag
                 [cdkDragData]="cardDrag(sec.uid, 'security')"
                 class="cursor-grab"
+                data-keep-pin
                 (pointerdown)="press($event, cardTarget(sec.uid, 'security'))"
                 (pointerup)="release()"
                 (pointerleave)="release()"
                 (pointercancel)="release()"
                 (cdkDragStarted)="release()"
                 (contextmenu)="ctx($event, cardTarget(sec.uid, 'security'))"
-                (mouseenter)="hover(sec.faceUp ? sec.cardId : null)"
+                (click)="sec.faceUp && pinClick($event, cardTarget(sec.uid, 'security'))"
+                (mouseenter)="hover(sec.faceUp ? sec.cardId : null, cardTarget(sec.uid, 'security'))"
                 (mouseleave)="hover(null)">
                 <digimon-play-card [cardId]="sec.faceUp ? sec.cardId : hiddenId" [faceDown]="!sec.faceUp" />
               </div>
@@ -125,12 +144,14 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
               <div
                 cdkDrag
                 [cdkDragData]="cardDrag(t.uid, 'trash')"
+                data-keep-pin
                 (pointerdown)="press($event, cardTarget(t.uid, 'trash'))"
                 (pointerup)="release()"
                 (pointerleave)="release()"
                 (cdkDragStarted)="release()"
                 (contextmenu)="ctx($event, cardTarget(t.uid, 'trash'))"
-                (mouseenter)="hover(t.cardId)"
+                (click)="pinClick($event, cardTarget(t.uid, 'trash'))"
+                (mouseenter)="hover(t.cardId, cardTarget(t.uid, 'trash'))"
                 (mouseleave)="hover(null)">
                 <digimon-play-card [cardId]="t.cardId" />
               </div>
@@ -189,7 +210,7 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
             cdkDropList
             [cdkDropListData]="dropData('battle')"
             (cdkDropListDropped)="onDrop($event)"
-            class="zone-row min-h-[calc(var(--cw)*1.6)] flex-1 gap-3">
+            class="zone-row battle-row min-h-[calc(var(--cw)*1.6)] flex-1 gap-3">
             @for (s of player().battle; track s.stackId) {
               <div
                 cdkDropList
@@ -251,12 +272,14 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
               <div
                 cdkDrag
                 [cdkDragData]="cardDrag(r.uid, 'reveal')"
+                data-keep-pin
                 (pointerdown)="press($event, cardTarget(r.uid, 'reveal'))"
                 (pointerup)="release()"
                 (pointerleave)="release()"
                 (cdkDragStarted)="release()"
                 (contextmenu)="ctx($event, cardTarget(r.uid, 'reveal'))"
-                (mouseenter)="hover(r.cardId)"
+                (click)="pinClick($event, cardTarget(r.uid, 'reveal'))"
+                (mouseenter)="hover(r.cardId, cardTarget(r.uid, 'reveal'))"
                 (mouseleave)="hover(null)">
                 <digimon-play-card [cardId]="r.cardId" />
               </div>
@@ -275,7 +298,7 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         [cdkDropListSortingDisabled]="true"
         [cdkDropListData]="dropData('hand')"
         (cdkDropListDropped)="onDrop($event)"
-        class="flex min-h-[calc(var(--cw)*1.45)] items-end justify-center overflow-visible pb-1">
+        class="hand-row flex min-h-[calc(var(--cw)*1.45)] items-end justify-center overflow-visible pb-1">
         @for (c of player().hand; track c.uid; let i = $index) {
           <div
             cdkDrag
@@ -283,15 +306,16 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
             class="relative cursor-grab transition-transform duration-150 hover:-translate-y-3 hover:z-50"
             [style.margin-left]="i === 0 ? '0px' : handOverlap"
             [style.z-index]="i + 1"
+            data-keep-pin
             (pointerdown)="press($event, cardTarget(c.uid, 'hand'))"
             (pointerup)="release()"
             (pointerleave)="release()"
             (pointercancel)="release()"
             (cdkDragStarted)="release()"
             (contextmenu)="ctx($event, cardTarget(c.uid, 'hand'))"
-            (mouseenter)="hover(c.cardId)"
+            (mouseenter)="hover(c.cardId, cardTarget(c.uid, 'hand'))"
             (mouseleave)="hover(null)"
-            (click)="tap(c.cardId)">
+            (click)="pinClick($event, cardTarget(c.uid, 'hand'))">
             <digimon-play-card [cardId]="c.cardId" />
           </div>
         }
@@ -304,14 +328,16 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         cdkDrag
         [cdkDragData]="stackDrag(s, zone)"
         class="cursor-pointer"
-        (click)="toggleSuspend(s)"
+        data-keep-pin
+        (click)="pinClick($event, stackTarget(s.stackId, zone))"
+        (dblclick)="toggleSuspend(s)"
         (pointerdown)="press($event, stackTarget(s.stackId, zone))"
         (pointerup)="release()"
         (pointerleave)="release()"
         (pointercancel)="release()"
         (cdkDragStarted)="release()"
         (contextmenu)="ctx($event, stackTarget(s.stackId, zone))"
-        (mouseenter)="hover(s.faceDown ? null : topOf(s))"
+        (mouseenter)="hover(s.faceDown ? null : topOf(s), stackTarget(s.stackId, zone))"
         (mouseleave)="hover(null)">
         <digimon-play-stack [stack]="s" />
       </div>
@@ -374,6 +400,28 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
       .cdk-drop-list-dragging .cdk-drag {
         transition: transform 150ms;
       }
+      /* Phone: battle cards scroll sideways with snap points; the hand is a scrollable tray. */
+      @media (max-width: 767px) {
+        .battle-row {
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          --cw: 4.6rem;
+        }
+        .battle-row > * {
+          scroll-snap-align: start;
+          flex-shrink: 0;
+        }
+        .hand-row {
+          justify-content: flex-start;
+          overflow-x: auto;
+          scroll-snap-type: x proximity;
+        }
+        .hand-row > * {
+          scroll-snap-align: center;
+          flex-shrink: 0;
+        }
+      }
     `,
   ],
 })
@@ -387,8 +435,10 @@ export class PlayerBoardComponent {
   @Output() readonly issue = new EventEmitter<Command>();
   /** Emitted on right-click or long-press with the target to build a menu for. */
   @Output() readonly menu = new EventEmitter<{ x: number; y: number; target: MenuTarget }>();
-  /** Emitted when the hovered / tapped card changes. null clears the preview. */
-  @Output() readonly preview = new EventEmitter<DigimonCard | null>();
+  /** Emitted when the pointer enters or leaves a stack or card. cardId is null for hidden cards. */
+  @Output() readonly preview = new EventEmitter<HoverInfo | null>();
+  /** Emitted on a click (not a drag) on a visible card or stack. The playmat pins it in the inspect panel. */
+  @Output() readonly pin = new EventEmitter<MenuTarget>();
 
   protected readonly hiddenId = HIDDEN_CARD_ID;
   protected readonly handOverlap = HAND_OVERLAP;
@@ -396,6 +446,8 @@ export class PlayerBoardComponent {
   private readonly memo = new Map<string, unknown>();
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressed = false;
+  private pressX = 0;
+  private pressY = 0;
 
   readonly securityTop = computed(() => {
     const sec = this.player().security;
@@ -432,12 +484,19 @@ export class PlayerBoardComponent {
     if (cmd) this.issue.emit(cmd);
   }
 
+  /** Double-click on a stack toggles suspend. A single click pins the stack instead. */
   toggleSuspend(stack: Stack): void {
+    this.issue.emit({ type: stack.suspended ? 'unsuspend' : 'suspend', player: this.owner(), stackId: stack.stackId });
+  }
+
+  /** A click pins the target. Ignored after a long-press (the menu is open) or when the pointer moved (a drag). */
+  pinClick(event: MouseEvent, target: MenuTarget): void {
     if (this.longPressed) {
       this.longPressed = false;
       return;
     }
-    this.issue.emit({ type: stack.suspended ? 'unsuspend' : 'suspend', player: this.owner(), stackId: stack.stackId });
+    if (Math.hypot(event.clientX - this.pressX, event.clientY - this.pressY) > DRAG_SLOP_PX) return;
+    this.pin.emit(target);
   }
 
   cardTarget(uid: string, zone: Zone): MenuTarget {
@@ -458,6 +517,8 @@ export class PlayerBoardComponent {
     this.release();
     const x = event.clientX;
     const y = event.clientY;
+    this.pressX = x;
+    this.pressY = y;
     this.pressTimer = setTimeout(() => {
       this.pressTimer = null;
       this.longPressed = true;
@@ -479,21 +540,26 @@ export class PlayerBoardComponent {
     this.menu.emit({ x: event.clientX, y: event.clientY, target });
   }
 
-  hover(cardId: string | null): void {
-    this.preview.emit(this.lookup(cardId));
+  hover(cardId: string | null, target?: MenuTarget): void {
+    if (!target) {
+      this.preview.emit(null);
+      return;
+    }
+    this.preview.emit({ cardId: this.visibleId(cardId), target });
   }
 
-  tap(cardId: string): void {
-    this.preview.emit(this.lookup(cardId));
+  deckWarn(): boolean {
+    const n = this.player().deck.length;
+    return n > 0 && n <= DECK_WARN_AT;
   }
 
   topOf(stack: Stack): string | null {
     return stack.cards[stack.cards.length - 1]?.cardId ?? null;
   }
 
-  private lookup(cardId: string | null): DigimonCard | null {
+  private visibleId(cardId: string | null): string | null {
     if (!cardId || cardId === HIDDEN_CARD_ID) return null;
-    return this.cards.cardsMap().get(cardId) ?? null;
+    return this.cards.cardsMap().has(cardId) ? cardId : null;
   }
 
   private cached<T>(key: string, make: () => T): T {

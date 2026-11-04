@@ -21,6 +21,8 @@ export interface WireCommand {
 
 /** Commands whose outcome depends on the owner's PRNG state, which the other peer never sees. */
 const PRNG_COMMANDS = new Set<Command['type']>(['setup', 'mulligan', 'shuffleDeck']);
+/** Every command that draws random numbers. The receiver must start from the sender's PRNG state. */
+const RNG_COMMANDS = new Set<Command['type']>([...PRNG_COMMANDS, 'flipCoin', 'rollDice']);
 
 /**
  * The cards on `owner`'s board that were hidden from the opponent before the command and are visible after it.
@@ -47,6 +49,7 @@ export function buildWire(prev: GameState, next: GameState, cmd: Command): WireC
   const wire: WireCommand = { cmd };
   const reveals = revealsFor(prev, next, cmd.player);
   if (Object.keys(reveals).length > 0) wire.reveals = reveals;
+  if (RNG_COMMANDS.has(cmd.type)) wire.cmd = { ...cmd, rng: prev.rngState };
   if (PRNG_COMMANDS.has(cmd.type)) wire.board = redactPlayer(next.players[cmd.player]);
   return wire;
 }

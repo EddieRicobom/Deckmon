@@ -244,3 +244,30 @@ export function zoneLabel(zone: Zone): string {
   };
   return labels[zone];
 }
+
+/** Total DP modifier on a stack: permanent plus until-end-of-turn. */
+export function stackDpMod(stack: Stack): number {
+  return (stack.dpMod ?? 0) + (stack.tempDpMod ?? 0);
+}
+
+/**
+ * Clears every until-end-of-turn modifier and marker on both boards. Returns how many effects were cleared.
+ * Called by passTurn, so temporary effects never outlive the turn they were made in.
+ */
+export function clearTemporary(state: GameState): number {
+  let cleared = 0;
+  for (const p of state.players) {
+    const stacks = [...p.battle, ...p.tamer, ...p.option, ...(p.breeding ? [p.breeding] : [])];
+    for (const s of stacks) {
+      if (s.tempDpMod !== undefined) {
+        cleared += 1;
+        delete s.tempDpMod;
+      }
+      if (s.tempMarkers !== undefined) {
+        cleared += s.tempMarkers.length;
+        delete s.tempMarkers;
+      }
+    }
+  }
+  return cleared;
+}

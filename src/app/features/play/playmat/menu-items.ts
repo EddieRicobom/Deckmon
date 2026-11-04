@@ -1,5 +1,6 @@
 import { Command } from '../core/commands';
 import { getStack, locateCard } from '../core/game';
+import { cardLabel } from '../core/labels';
 import { GameState, PlayerIndex, PileZone, StackZone, Zone } from '../core/types';
 
 export type MenuTarget =
@@ -11,8 +12,10 @@ export interface MenuItem {
   label: string;
   /** Command to send when chosen. */
   cmd?: Command;
-  /** Opens a text prompt for a marker name, then sends addMarker for this stack. */
-  promptMarker?: string;
+  /** Pins the stack in the inspect panel, where counters and markers are edited inline. */
+  inspect?: boolean;
+  /** dp and marker items are also shown as inline controls in the inspect panel, so the panel skips them. */
+  group?: 'dp' | 'marker';
   separator?: boolean;
   danger?: boolean;
 }
@@ -31,7 +34,9 @@ export function menuItemsFor(target: MenuTarget, state: GameState): MenuItem[] {
           { label: 'Draw 1', cmd: { type: 'draw', player: owner, count: 1 } },
           { label: 'Draw 5', cmd: { type: 'draw', player: owner, count: 5 } },
           { label: 'Shuffle deck', cmd: { type: 'shuffleDeck', player: owner, zone: 'deck' } },
-          { label: 'Mulligan (hand to deck, draw 5)', cmd: { type: 'mulligan', player: owner }, separator: true },
+          ...(state.turn === 1
+            ? [{ label: 'Mulligan (hand to deck, draw 5)', cmd: { type: 'mulligan', player: owner } as Command, separator: true }]
+            : []),
           { label: 'Reset board (new opening hand)', cmd: { type: 'setup', player: owner }, danger: true },
         ];
       case 'eggDeck':
@@ -70,15 +75,10 @@ export function menuItemsFor(target: MenuTarget, state: GameState): MenuItem[] {
       items.push({
         label: `DP ${delta > 0 ? '+' : ''}${delta}`,
         cmd: { type: 'adjustDp', player: owner, stackId: stack.stackId, delta },
+        group: 'dp',
       });
     }
-    items.push({ label: 'Add marker...', promptMarker: stack.stackId });
-    for (const marker of stack.markers ?? []) {
-      items.push({
-        label: `Remove marker "${marker}"`,
-        cmd: { type: 'removeMarker', player: owner, stackId: stack.stackId, marker },
-      });
-    }
+    items.push({ label: 'Counters, markers and DP...', inspect: true, group: 'marker' });
     items.push({ label: '', separator: true });
     items.push({ label: 'Return to hand', cmd: { type: 'returnToHand', player: owner, stackId: stack.stackId } });
     items.push({ label: 'Put on top of deck', cmd: { type: 'stackToDeck', player: owner, stackId: stack.stackId, position: 'top' } });
@@ -109,6 +109,12 @@ export function menuItemsFor(target: MenuTarget, state: GameState): MenuItem[] {
 
   switch (loc.zone) {
     case 'hand':
+      for (const stack of p.battle) {
+        items.push({
+          label: `Digivolve onto ${cardLabel(stack.cards[stack.cards.length - 1]?.cardId ?? '')}`,
+          cmd: { type: 'digivolve', player: owner, handUid: uid, onto: stack.stackId },
+        });
+      }
       items.push(
         { label: 'Play to battle area', cmd: { type: 'playFromHand', player: owner, uid, to: 'battle' } },
         { label: 'Play to tamer area', cmd: { type: 'playFromHand', player: owner, uid, to: 'tamer' } },

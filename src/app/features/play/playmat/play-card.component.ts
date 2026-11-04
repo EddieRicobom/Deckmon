@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DigimonCard } from '../../../../models';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
+import { stackDpMod } from '../core/game';
 import { Stack } from '../core/types';
 import { HIDDEN_CARD_ID } from '../core/view';
 
@@ -73,12 +74,19 @@ export class PlayCardComponent {
             >{{ dp }}</span
           >
         }
-        @if (stack().markers?.length) {
+        @if (markerCount() > 0) {
           <span
             class="pointer-events-none absolute bottom-1 left-1 z-[60] max-w-[90%] truncate rounded bg-accent/90 px-1 text-[0.6rem] font-semibold text-accent-ink"
             [style.transform]="counterTransform()">
-            {{ stack().markers![0] }}{{ stack().markers!.length > 1 ? ' +' + (stack().markers!.length - 1) : '' }}
+            {{ firstMarker() }}{{ markerCount() > 1 ? ' +' + (markerCount() - 1) : '' }}
           </span>
+        }
+        @if (stack().counter) {
+          <span
+            class="pointer-events-none absolute left-1 top-1 z-[60] min-w-[1.1rem] rounded-full bg-sky-500 px-1 text-center font-mono text-[0.6rem] font-bold leading-tight text-white"
+            [style.transform]="counterTransform()"
+            >{{ stack().counter }}</span
+          >
         }
       </div>
     </div>
@@ -106,12 +114,16 @@ export class PlayStackComponent {
   /** Keep badges upright when the stack is rotated. */
   readonly counterTransform = computed(() => (this.stack().suspended ? 'rotate(-90deg)' : 'none'));
 
+  readonly markerCount = computed(() => (this.stack().markers?.length ?? 0) + (this.stack().tempMarkers?.length ?? 0));
+  readonly firstMarker = computed(() => this.stack().markers?.[0] ?? this.stack().tempMarkers?.[0] ?? '');
+
   readonly dpLabel = computed(() => {
     const s = this.stack();
     if (s.faceDown) return null;
     const base = Number.parseInt(this.store.cardsMap().get(this.topCardId())?.dp ?? '', 10);
-    if (!Number.isFinite(base) && s.dpMod === 0) return null;
-    const total = (Number.isFinite(base) ? base : 0) + s.dpMod;
+    const mod = stackDpMod(s);
+    if (!Number.isFinite(base) && mod === 0) return null;
+    const total = (Number.isFinite(base) ? base : 0) + mod;
     return `${total}`;
   });
 }

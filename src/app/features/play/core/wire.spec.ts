@@ -198,3 +198,22 @@ describe('online setup', () => {
     expect(publicHash(hostState)).toBe(publicHash(guestState));
   });
 });
+
+describe('online coin flips and dice', () => {
+  it('gives the same result on both peers even though their PRNG states differ', () => {
+    let { host, guest } = pair(21);
+    // Advance the host's PRNG without sending it, so the two peers no longer share a PRNG state.
+    host = applyCommand(host, { type: 'flipCoin', player: 0 });
+    expect(guest.rngState).toBe(0);
+    const flip = localMove(host, { type: 'flipCoin', player: 0 });
+    const roll = localMove(flip.next, { type: 'rollDice', player: 0, sides: 6 });
+    expect(flip.wire.cmd.rng).toBe(host.rngState);
+
+    guest = remoteMove(guest, flip.wire);
+    guest = remoteMove(guest, roll.wire);
+    const texts = (st: GameState) => st.log.slice(-2).map((e) => e.text);
+    expect(texts(guest)).toEqual(texts(roll.next));
+    expect(guest.rngState).toBe(roll.next.rngState);
+    expect(publicHash(guest)).toBe(publicHash(roll.next));
+  });
+});

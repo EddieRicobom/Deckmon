@@ -104,6 +104,7 @@ function parseWire(raw: unknown, sender: PlayerIndex): WireCommand | null {
   if (!isObject(raw) || !isObject(raw['cmd']) || typeof raw['cmd']['type'] !== 'string') return null;
   const cmd = raw['cmd'] as unknown as WireCommand['cmd'];
   if (cmd.player !== sender) return null;
+  if (cmd.rng !== undefined && (typeof cmd.rng !== 'number' || !Number.isSafeInteger(cmd.rng))) return null;
   const wire: WireCommand = { cmd };
   const reveals = raw['reveals'];
   if (reveals !== undefined) {

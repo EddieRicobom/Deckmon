@@ -26,7 +26,13 @@ export interface Stack {
   suspended: boolean;
   dpMod: number;
   faceDown?: boolean;
+  /** Permanent markers (status chips such as "Rush" or custom text). */
   markers?: string[];
+  /** Markers and DP that only last until the next passTurn ("until end of turn"). */
+  tempMarkers?: string[];
+  tempDpMod?: number;
+  /** Generic numeric counter for effects that count things. Never negative. */
+  counter?: number;
 }
 
 /** Zones holding loose cards. Piles are ordered bottom..top (top = last element) except hand/trash/reveal. */

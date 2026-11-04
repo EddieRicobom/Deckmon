@@ -3,9 +3,10 @@
  * Invalid commands throw an Error with a readable message; callers should catch and show it.
  */
 import { Command } from './commands';
-import { allCards, dealBoard, getStack, locateCard, locateStack, pileOf, cloneState } from './game';
-import { shuffle } from './rng';
+import { allCards, dealBoard, stackDpMod, getStack, locateCard, locateStack, pileOf, cloneState, clearTemporary } from './game';
+import { nextRandom, shuffle } from './rng';
 import { HIDDEN_CARD_ID } from './view';
+import { cardLabel } from './labels';
 import {
   CardRef,
   GameState,
@@ -23,6 +24,9 @@ import {
 
 const DEFAULT_PASS_MEMORY = 3;
 const MULLIGAN_HAND_SIZE = 5;
+const MAX_MARKER_LENGTH = 24;
+const MAX_COUNTER = 99;
+const MAX_DIE_SIDES = 100;
 
 export function clampMemory(value: number): number {
   if (!Number.isFinite(value)) throw new Error('Memory must be a number');
@@ -35,6 +39,8 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
   const p = state.players[cmd.player];
   const who = p.name;
   if (cmd.reveals) applyReveals(p, cmd.reveals);
+  // Wire only: adopt the owner's PRNG state so randomness matches on both peers.
+  if (cmd.rng !== undefined) state.rngState = cmd.rng >>> 0;
 
   const say = (text: string) => {
     state.log.push({ seq: state.log.length, turn: state.turn, player: cmd.player, text });
@@ -52,6 +58,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     }
 
     case 'mulligan': {
+      if (state.turn !== 1) throw new Error('Mulligan is only available on turn 1.');
       const shuffled = shuffle([...p.deck, ...p.hand], state.rngState);
       state.rngState = shuffled.rngState;
       p.deck = shuffled.value;
@@ -92,11 +99,34 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     case 'passTurn': {
       const next: PlayerIndex = state.activePlayer === 0 ? 1 : 0;
       const memory = clampMemory(cmd.memory ?? DEFAULT_PASS_MEMORY);
+      const cleared = clearTemporary(state);
       state.activePlayer = next;
       state.turn += 1;
       state.phase = 'unsuspend';
       state.memory = memory;
-      say(`${who} ended the turn. ${state.players[next].name} is active with memory ${memory >= 0 ? '+' : ''}${memory}.`);
+      const note = cleared > 0 ? ` ${cleared} until-end-of-turn effect(s) cleared.` : '';
+      say(
+        `${who} ended the turn. ${state.players[next].name} is active with memory ${memory >= 0 ? '+' : ''}${memory}.${note}`,
+      );
+      break;
+    }
+
+    case 'flipCoin': {
+      const r = nextRandom(state.rngState);
+      state.rngState = r.rngState;
+      say(`${who} flipped a coin: ${r.value < 0.5 ? 'Heads' : 'Tails'}.`);
+      break;
+    }
+
+    case 'rollDice': {
+      const sides = cmd.sides ?? 6;
+      if (!Number.isInteger(sides) || sides < 2 || sides > MAX_DIE_SIDES) {
+        throw new Error(`A die needs between 2 and ${MAX_DIE_SIDES} sides`);
+      }
+      const r = nextRandom(state.rngState);
+      state.rngState = r.rngState;
+      const value = Math.floor(r.value * sides) + 1;
+      say(`${who} rolled a d${sides}: ${value}.`);
       break;
     }
 
@@ -118,7 +148,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       const egg = p.eggDeck.pop();
       if (!egg) throw new Error(`${who}'s egg deck is empty`);
       p.breeding = { stackId: mintStackId(), cards: [egg], suspended: false, dpMod: 0 };
-      say(`${who} hatched an egg (${egg.cardId}).`);
+      say(`${who} hatched an egg (${cardLabel(egg.cardId)}).`);
       break;
     }
 
@@ -127,7 +157,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       p.battle.push(p.breeding);
       const top = p.breeding.cards[p.breeding.cards.length - 1];
       p.breeding = null;
-      say(`${who} moved ${top?.cardId ?? 'a digimon'} from breeding to battle.`);
+      say(`${who} moved ${top ? cardLabel(top.cardId) : 'a digimon'} from breeding to battle.`);
       break;
     }
 
@@ -135,7 +165,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       const card = takeFromHand(p, cmd.uid);
       const stack = newStack(mintStackId(), [card]);
       (cmd.to === 'battle' ? p.battle : cmd.to === 'tamer' ? p.tamer : p.option).push(stack);
-      say(`${who} played ${card.cardId} to the ${cmd.to} area.`);
+      say(`${who} played ${cardLabel(card.cardId)} to the ${cmd.to} area.`);
       break;
     }
 
@@ -147,7 +177,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
         throw new Error('Digivolution target is not in the battle area');
       }
       stack.cards.push(card);
-      say(`${who} digivolved into ${card.cardId}.`);
+      say(`${who} digivolved into ${cardLabel(card.cardId)}.`);
       break;
     }
 
@@ -159,7 +189,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       const hiddenTarget = isHiddenZone(to, cmd.faceUp);
       const card = removeCard(p, cmd.uid);
       const ref: CardRef = { uid: card.uid, cardId: card.cardId };
-      const label = hiddenSource && hiddenTarget ? 'a card' : ref.cardId;
+      const label = hiddenSource && hiddenTarget ? 'a card' : cardLabel(ref.cardId);
       if (isStackZone(to)) {
         const stack = newStack(mintStackId(), [ref]);
         if (to === 'breeding') {
@@ -189,7 +219,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       const sec = cmd.position === 'bottom' ? p.security.shift() : p.security.pop();
       if (!sec) throw new Error(`${who} has no security cards`);
       p.reveal.push({ uid: sec.uid, cardId: sec.cardId });
-      say(`${who} revealed security ${sec.cardId}.`);
+      say(`${who} revealed security ${cardLabel(sec.cardId)}.`);
       break;
     }
 
@@ -225,26 +255,40 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
 
     case 'adjustDp': {
       const stack = requireStack(p, cmd.stackId);
-      stack.dpMod += cmd.delta;
+      if (!Number.isSafeInteger(cmd.delta)) throw new Error('DP change must be a whole number');
+      const scope = cmd.temporary ? ' until end of turn' : '';
+      if (cmd.temporary) stack.tempDpMod = (stack.tempDpMod ?? 0) + cmd.delta;
+      else stack.dpMod += cmd.delta;
       say(
-        `${who} ${cmd.delta >= 0 ? '+' : ''}${cmd.delta} DP on ${topName(stack)} (modifier ${stack.dpMod >= 0 ? '+' : ''}${stack.dpMod}).`,
+        `${who} ${cmd.delta >= 0 ? '+' : ''}${cmd.delta} DP on ${topName(stack)}${scope} (modifier ${signed(stackDpMod(stack))}).`,
       );
       break;
     }
 
     case 'addMarker': {
       const stack = requireStack(p, cmd.stackId);
-      stack.markers = [...(stack.markers ?? []), cmd.marker];
-      say(`${who} added marker "${cmd.marker}" to ${topName(stack)}.`);
+      const marker = cmd.marker.trim();
+      if (!marker) throw new Error('Marker needs a name');
+      if (marker.length > MAX_MARKER_LENGTH) throw new Error(`Marker names are at most ${MAX_MARKER_LENGTH} characters`);
+      if (cmd.temporary) stack.tempMarkers = [...(stack.tempMarkers ?? []), marker];
+      else stack.markers = [...(stack.markers ?? []), marker];
+      say(`${who} added marker "${marker}"${cmd.temporary ? ' until end of turn' : ''} to ${topName(stack)}.`);
       break;
     }
 
     case 'removeMarker': {
       const stack = requireStack(p, cmd.stackId);
-      const idx = (stack.markers ?? []).indexOf(cmd.marker);
-      if (idx === -1) throw new Error(`Marker "${cmd.marker}" not found`);
-      stack.markers!.splice(idx, 1);
+      if (!removeMarkerFrom(stack, cmd.marker, cmd.temporary)) throw new Error(`Marker "${cmd.marker}" not found`);
       say(`${who} removed marker "${cmd.marker}" from ${topName(stack)}.`);
+      break;
+    }
+
+    case 'adjustCounter': {
+      const stack = requireStack(p, cmd.stackId);
+      if (!Number.isSafeInteger(cmd.delta)) throw new Error('Counter change must be a whole number');
+      const next = Math.max(0, Math.min(MAX_COUNTER, (stack.counter ?? 0) + cmd.delta));
+      stack.counter = next;
+      say(`${who} counter on ${topName(stack)} is now ${next}.`);
       break;
     }
 
@@ -375,7 +419,25 @@ function newStack(stackId: string, cards: CardRef[]): Stack {
   return { stackId, cards, suspended: false, dpMod: 0 };
 }
 
+function signed(n: number): string {
+  return `${n >= 0 ? '+' : ''}${n}`;
+}
+
+/** Removes one occurrence of a marker. Without a `temporary` flag, permanent markers go first. Returns false when none matched. */
+function removeMarkerFrom(stack: Stack, marker: string, temporary?: boolean): boolean {
+  const keys = temporary === undefined ? (['markers', 'tempMarkers'] as const) : temporary ? (['tempMarkers'] as const) : (['markers'] as const);
+  for (const key of keys) {
+    const list = stack[key];
+    const idx = list ? list.indexOf(marker) : -1;
+    if (list && idx !== -1) {
+      list.splice(idx, 1);
+      return true;
+    }
+  }
+  return false;
+}
+
 function topName(stack: Stack): string {
   const top = stack.cards[stack.cards.length - 1];
-  return top ? top.cardId : 'a stack';
+  return top ? cardLabel(top.cardId) : 'a stack';
 }

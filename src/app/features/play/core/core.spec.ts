@@ -1,5 +1,5 @@
 import { applyCommand } from './reducer';
-import { createGame, DeckListEntry } from './game';
+import { createGame, DeckListEntry, stackDpMod } from './game';
 import { nextRandom, shuffle } from './rng';
 import { createHistory, dispatch, replay, undo, canUndo } from './history';
 import { redactFor, HIDDEN_CARD_ID } from './view';
@@ -192,5 +192,102 @@ describe('redactFor', () => {
     expect(view.players[0]).toEqual(state.players[0]);
     expect(view.rngState).toBe(0);
     expect(view.seed).toBe(0);
+  });
+});
+
+describe('temporary effects, counters and randomness', () => {
+  it('clears until-end-of-turn DP and markers on passTurn but keeps permanent ones', () => {
+    let s = newGame();
+    s = applyCommand(s, { type: 'playFromHand', player: 0, uid: s.players[0].hand[0].uid, to: 'battle' });
+    const stackId = s.players[0].battle[0].stackId;
+    s = applyCommand(s, { type: 'adjustDp', player: 0, stackId, delta: 1000, temporary: true });
+    s = applyCommand(s, { type: 'adjustDp', player: 0, stackId, delta: 2000 });
+    s = applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: 'Rush', temporary: true });
+    s = applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: 'Blocker' });
+    expect(stackDpMod(s.players[0].battle[0])).toBe(3000);
+
+    s = applyCommand(s, { type: 'passTurn', player: 0 });
+    const stack = s.players[0].battle[0];
+    expect(stack.tempDpMod).toBeUndefined();
+    expect(stack.tempMarkers).toBeUndefined();
+    expect(stack.dpMod).toBe(2000);
+    expect(stack.markers).toEqual(['Blocker']);
+    expect(s.log[s.log.length - 1].text).toContain('cleared');
+  });
+
+  it('clears temporary effects on both boards, including breeding', () => {
+    let s = newGame();
+    s = applyCommand(s, { type: 'hatch', player: 1 });
+    const id = s.players[1].breeding!.stackId;
+    s = applyCommand(s, { type: 'adjustDp', player: 1, stackId: id, delta: -1000, temporary: true });
+    s = applyCommand(s, { type: 'passTurn', player: 0 });
+    expect(s.players[1].breeding!.tempDpMod).toBeUndefined();
+  });
+
+  it('removes permanent markers before temporary ones and rejects unknown markers', () => {
+    let s = newGame();
+    s = applyCommand(s, { type: 'playFromHand', player: 0, uid: s.players[0].hand[0].uid, to: 'battle' });
+    const stackId = s.players[0].battle[0].stackId;
+    s = applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: 'Jamming' });
+    s = applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: 'Jamming', temporary: true });
+    s = applyCommand(s, { type: 'removeMarker', player: 0, stackId, marker: 'Jamming' });
+    expect(s.players[0].battle[0].markers).toEqual([]);
+    expect(s.players[0].battle[0].tempMarkers).toEqual(['Jamming']);
+    expect(() => applyCommand(s, { type: 'removeMarker', player: 0, stackId, marker: 'Nope' })).toThrow();
+  });
+
+  it('validates marker text', () => {
+    let s = newGame();
+    s = applyCommand(s, { type: 'playFromHand', player: 0, uid: s.players[0].hand[0].uid, to: 'battle' });
+    const stackId = s.players[0].battle[0].stackId;
+    expect(() => applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: '   ' })).toThrow();
+    expect(() => applyCommand(s, { type: 'addMarker', player: 0, stackId, marker: 'x'.repeat(25) })).toThrow();
+  });
+
+  it('keeps stack counters between 0 and 99', () => {
+    let s = newGame();
+    s = applyCommand(s, { type: 'playFromHand', player: 0, uid: s.players[0].hand[0].uid, to: 'battle' });
+    const stackId = s.players[0].battle[0].stackId;
+    s = applyCommand(s, { type: 'adjustCounter', player: 0, stackId, delta: 3 });
+    s = applyCommand(s, { type: 'adjustCounter', player: 0, stackId, delta: -10 });
+    expect(s.players[0].battle[0].counter).toBe(0);
+    s = applyCommand(s, { type: 'adjustCounter', player: 0, stackId, delta: 500 });
+    expect(s.players[0].battle[0].counter).toBe(99);
+  });
+
+  it('flips coins and rolls dice deterministically from the seed', () => {
+    const run = (seed: number) => {
+      let s = newGame(seed);
+      s = applyCommand(s, { type: 'flipCoin', player: 0 });
+      s = applyCommand(s, { type: 'rollDice', player: 0 });
+      s = applyCommand(s, { type: 'rollDice', player: 1, sides: 20 });
+      return s;
+    };
+    const a = run(11);
+    const b = run(11);
+    expect(a.log).toEqual(b.log);
+    expect(a.rngState).toBe(b.rngState);
+    const logs = a.log.slice(-3).map((e) => e.text);
+    expect(logs[0]).toMatch(/Heads|Tails/);
+    const d6 = Number(/: (\d+)\./.exec(logs[1])![1]);
+    const d20 = Number(/: (\d+)\./.exec(logs[2])![1]);
+    expect(d6).toBeGreaterThanOrEqual(1);
+    expect(d6).toBeLessThanOrEqual(6);
+    expect(d20).toBeGreaterThanOrEqual(1);
+    expect(d20).toBeLessThanOrEqual(20);
+  });
+
+  it('rejects dice with fewer than 2 or more than 100 sides', () => {
+    const s = newGame();
+    expect(() => applyCommand(s, { type: 'rollDice', player: 0, sides: 1 })).toThrow();
+    expect(() => applyCommand(s, { type: 'rollDice', player: 0, sides: 101 })).toThrow();
+    expect(() => applyCommand(s, { type: 'rollDice', player: 0, sides: 2.5 })).toThrow();
+  });
+
+  it('only allows a mulligan on turn 1', () => {
+    let s = newGame();
+    expect(() => applyCommand(s, { type: 'mulligan', player: 0 })).not.toThrow();
+    s = applyCommand(s, { type: 'passTurn', player: 0 });
+    expect(() => applyCommand(s, { type: 'mulligan', player: 1 })).toThrow(/turn 1/);
   });
 });

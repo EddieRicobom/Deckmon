@@ -21,6 +21,11 @@ interface Base {
    * PRNG: setup, mulligan, shuffleDeck). Replaces the receiver's placeholder board after the command is applied.
    */
   board?: PlayerState;
+  /**
+   * Wire only. PRNG state the owner had BEFORE this command. The receiver adopts it before applying, so commands
+   * that consume randomness (setup, mulligan, shuffle, coin, dice) produce the same result on both peers.
+   */
+  rng?: number;
 }
 
 export type Command =
@@ -32,6 +37,10 @@ export type Command =
   | (Base & { type: 'draw'; count?: number })
   | (Base & { type: 'shuffleDeck'; zone?: 'deck' | 'eggDeck' })
   | (Base & { type: 'nextPhase' })
+  /** Flips a coin and logs Heads or Tails. Uses the synced PRNG. */
+  | (Base & { type: 'flipCoin' })
+  /** Rolls a die with `sides` faces (2..100, default 6) and logs the result. */
+  | (Base & { type: 'rollDice'; sides?: number })
   /**
    * End the turn. `memory` is expressed from the NEW active player's perspective
    * (positive = new active player's side). Defaults to 3.
@@ -61,9 +70,11 @@ export type Command =
   | (Base & { type: 'unsuspend'; stackId: string })
   | (Base & { type: 'unsuspendAll' })
   | (Base & { type: 'setStackFaceDown'; stackId: string; faceDown: boolean })
-  | (Base & { type: 'adjustDp'; stackId: string; delta: number })
-  | (Base & { type: 'addMarker'; stackId: string; marker: string })
-  | (Base & { type: 'removeMarker'; stackId: string; marker: string })
+  /** `temporary` modifiers are cleared by the next passTurn. */
+  | (Base & { type: 'adjustDp'; stackId: string; delta: number; temporary?: boolean })
+  | (Base & { type: 'addMarker'; stackId: string; marker: string; temporary?: boolean })
+  | (Base & { type: 'adjustCounter'; stackId: string; delta: number })
+  | (Base & { type: 'removeMarker'; stackId: string; marker: string; temporary?: boolean })
   | (Base & { type: 'trashStack'; stackId: string })
   | (Base & { type: 'returnToHand'; stackId: string })
   | (Base & { type: 'stackToDeck'; stackId: string; position: 'top' | 'bottom' });
