@@ -1,10 +1,11 @@
 import { SeoService } from '@services';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ApplicationRef, ChangeDetectionStrategy, Component, EnvironmentInjector, inject, signal } from '@angular/core';
 import { DigimonCard } from '@models';
 import { DialogStore } from '@store';
 import { PaginationCardListComponent } from '../collection/components/pagination-card-list.component';
 import { PageComponent } from '../shared/page.component';
 import { CardDetailPanelComponent } from './card-detail-panel.component';
+import { openHoloCardFullscreen } from '../shared/holo-card-fullscreen.component';
 
 @Component({
   selector: 'digimon-cards-page',
@@ -31,6 +32,8 @@ import { CardDetailPanelComponent } from './card-detail-panel.component';
 export class CardsPageComponent {
   private seo = inject(SeoService);
   private dialogStore = inject(DialogStore);
+  private appRef = inject(ApplicationRef);
+  private envInjector = inject(EnvironmentInjector);
   selected = signal<DigimonCard | null>(null);
 
   constructor() {
@@ -38,9 +41,15 @@ export class CardsPageComponent {
   }
 
   // The side panel only exists on xl screens; smaller screens keep the dialog
+  // Clicking the already-selected card again (or double-clicking it) opens the 3D view
   select(card: DigimonCard) {
+    const wide = window.matchMedia('(min-width: 1280px)').matches;
+    if (wide && this.selected()?.id === card.id) {
+      openHoloCardFullscreen(this.appRef, this.envInjector, card);
+      return;
+    }
     this.selected.set(card);
-    if (!window.matchMedia('(min-width: 1280px)').matches) {
+    if (!wide) {
       this.dialogStore.updateViewCardDialog({ show: true, card, width: '50vw' });
     }
   }

@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ApplicationRef, ChangeDetectionStrategy, Component, computed, EnvironmentInjector, inject, input } from '@angular/core';
 import { ImgFallbackDirective } from '@directives';
 import { replaceWithImageTags } from '@functions';
 import { DigimonCard } from '@models';
 import { DialogStore } from '@store';
+import { openHoloCardFullscreen } from '../shared/holo-card-fullscreen.component';
 
 // Wiki data uses '-' for "no value"
 const filled = (value?: string) => !!value && value.trim() !== '-' && value.trim() !== '';
@@ -12,7 +13,9 @@ const filled = (value?: string) => !!value && value.trim() !== '-' && value.trim
   template: `
     @if (card(); as card) {
       <div class="flex flex-col gap-4">
-        <img [digimonImgFallback]="card.cardImage" [alt]="card.cardNumber + ' ' + card.name.english" class="w-full rounded-xl" />
+        <button type="button" (click)="open3d(card)" title="Click to view in 3D" class="group block w-full cursor-zoom-in rounded-xl p-0 [perspective:900px]">
+          <img [digimonImgFallback]="card.cardImage" [alt]="card.cardNumber + ' ' + card.name.english" class="w-full rounded-xl transition-transform duration-300 group-hover:[transform:rotateY(-8deg)_rotateX(4deg)_scale(1.02)]" />
+        </button>
 
         <div class="flex flex-col gap-1">
           <h2 class="m-0 font-display text-2xl font-bold text-fg">{{ card.name.english }}</h2>
@@ -57,6 +60,12 @@ export class CardDetailPanelComponent {
   card = input<DigimonCard | null>(null);
 
   private dialogStore = inject(DialogStore);
+  private appRef = inject(ApplicationRef);
+  private envInjector = inject(EnvironmentInjector);
+
+  open3d(card: DigimonCard) {
+    openHoloCardFullscreen(this.appRef, this.envInjector, card);
+  }
 
 
   subtitle = computed(() => {
