@@ -21,7 +21,7 @@ function setCodeOf(cardId: string): string {
  * Lobby-only convenience: it uses Math.random, not the game's seeded PRNG.
  */
 export function randomStarterDeck(cards: readonly DigimonCard[]): DeckListEntry[] {
-  const starters = cards.filter((c) => /^ST\d+/i.test(c.id));
+  const starters = cards.filter((c) => /^ST\d+/i.test(c.id) && isPlayableCard(c));
   if (starters.length === 0) return [];
 
   const sets = new Map<string, DigimonCard[]>();
@@ -29,7 +29,14 @@ export function randomStarterDeck(cards: readonly DigimonCard[]): DeckListEntry[
     const code = setCodeOf(card.id);
     sets.set(code, [...(sets.get(code) ?? []), card]);
   }
-  const codes = [...sets.keys()];
+  // Only sets that can form a real deck: at least one Digi-Egg and enough main-deck cards.
+  const codes = [...sets.keys()].filter((code) => {
+    const set = sets.get(code) ?? [];
+    const uniqueIds = new Set(set.map((c) => c.id));
+    const eggs = set.filter((c) => c.cardType === EGG_TYPE).length;
+    return eggs > 0 && uniqueIds.size - eggs >= Math.ceil(MAIN_DECK_SIZE / STARTER_COPIES);
+  });
+  if (codes.length === 0) return [];
   const chosen = sets.get(codes[Math.floor(Math.random() * codes.length)]) ?? [];
 
   const unique = new Map<string, DigimonCard>();
@@ -55,6 +62,18 @@ export function randomStarterDeck(cards: readonly DigimonCard[]): DeckListEntry[
     eggTotal += count;
   }
   return entries;
+}
+
+const CARD_TYPES = new Set(['Digimon', 'Digi-Egg', 'Tamer', 'Option']);
+
+/** Filters out broken wiki entries (template placeholders, missing type or cost). */
+function isPlayableCard(c: DigimonCard): boolean {
+  const name = c.name?.english ?? '';
+  if (!name || name.includes('{{') || name.includes('[[')) return false;
+  if (!CARD_TYPES.has(c.cardType)) return false;
+  if (c.cardType === 'Digimon' && !/\d/.test(c.cardLv ?? '')) return false;
+  if (c.cardType !== 'Digi-Egg' && !/^\d+$/.test(String(c.playCost ?? '').trim())) return false;
+  return true;
 }
 
 export function deckLabel(deck: Pick<IDeck, 'title'>): string {
