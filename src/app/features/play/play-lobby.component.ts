@@ -67,7 +67,7 @@ const STARTER_OPPONENT = 'starter';
 
           @if (decks().length === 0) {
             <p class="m-0 text-xs text-muted">
-              No saved decks found. Log in and save a deck in the deck builder to play with it. Starter decks are random until then.
+              No saved decks found. Save a deck in the deck builder to play with it. Starter decks are random until then.
             </p>
           }
           @if (!cardsReady()) {

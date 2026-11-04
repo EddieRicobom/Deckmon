@@ -10,7 +10,7 @@ import { NavLinksComponent } from './nav-links.component';
   template: `
     <nav class="flex flex-row h-[3.5rem] md:h-[5rem] w-[100vw] max-w-[100vw] border-b border-line bg-ink-1 px-5 items-center">
       <a class="z-[5000]" [href]="appUrl">
-        <img alt="Logo" class="mt-[0.25rem] cursor-pointer max-h-[2.5rem] md:max-h-[3.25rem]" src="../../../../assets/images/logo.png" />
+        <img alt="Logo" class="mt-[0.25rem] cursor-pointer max-h-[2.5rem] md:max-h-[3.25rem]" src="assets/images/logo.png" />
       </a>
 
       <!-- display: contents lets the search sit between the links and the account cluster -->
