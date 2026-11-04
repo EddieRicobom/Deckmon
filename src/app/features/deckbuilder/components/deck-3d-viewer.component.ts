@@ -134,7 +134,7 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
     <ng-template #holoTpl let-entry let-focus="focus">
       <div class="tilt" [class.is-focus]="focus">
         <div class="flip" [class.is-flipped]="focus && flipped">
-          <div class="face front" [class.tier-rare]="entry.tier === 'rare'" [class.tier-super]="entry.tier === 'super'">
+          <div class="face front" [class]="'holo-' + entry.tier">
             <img
               class="art"
               [src]="entry.card.cardImage"
@@ -143,6 +143,7 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
               decoding="async"
               draggable="false" />
             <div class="shine"></div>
+            <div class="fx"></div>
             <div class="glare"></div>
             <div class="sparkle"></div>
             @if (entry.count > 1) {

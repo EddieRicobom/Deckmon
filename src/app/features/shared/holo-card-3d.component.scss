@@ -1,8 +1,10 @@
+@use 'holo';
+
 :host {
   display: block;
 }
 
-// Tilt: pointer-driven rotation via --rx / --ry. Holo values match the deck 3D viewer.
+// Tilt: pointer-driven rotation via --rx / --ry. Holo layers come from the shared _holo partial.
 
 .tilt {
   position: relative;
@@ -29,15 +31,6 @@
     outline: 2px solid #7dd3fc;
     outline-offset: 6px;
     border-radius: 4.5%;
-  }
-}
-
-@keyframes hcd-shimmer {
-  from {
-    background-position: 0% 50%, 0% 50%;
-  }
-  to {
-    background-position: 100% 50%, 100% 50%;
   }
 }
 
@@ -115,104 +108,4 @@
   pointer-events: none;
 }
 
-// Holo layers. Common cards get the glare only.
-
-.shine,
-.glare,
-.sparkle {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.shine {
-  display: none;
-  background-image: repeating-linear-gradient(115deg, transparent 0 22%, rgba(255, 255, 255, 0.28) 32%, transparent 42%),
-    linear-gradient(115deg, #ff5e8a, #ffd166 16%, #6ee7b7 33%, #60a5fa 50%, #c084fc 66%, #f472b6 83%, #ffd166);
-  background-size: 250% 250%, 300% 300%;
-  background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%), calc(var(--posx) * 1%) calc(var(--posy) * 1%);
-  mix-blend-mode: color-dodge;
-  // color-dodge blows out to white quickly; keep the foil dark so it reads as colour, not glare.
-  filter: brightness(0.55) contrast(1.5) saturate(1.3);
-}
-
-.glare {
-  background: radial-gradient(
-    circle at calc(var(--mx) * 1%) calc(var(--my) * 1%),
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(255, 255, 255, 0.12) 35%,
-    transparent 65%
-  );
-  mix-blend-mode: overlay;
-  opacity: calc(0.3 + min(var(--hyp), 1) * 0.4);
-}
-
-.sparkle {
-  // "Digital" foil: binary 1/0 glyphs (Matrix style) instead of glitter dots.
-  // Static layer drifts against the pointer; ::after layer rains down continuously.
-  display: none;
-  overflow: hidden;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='72' font-family='monospace' font-weight='700'><g fill='%237CFFB2'><text x='3' y='10' font-size='9' opacity='.9'>1</text><text x='22' y='18' font-size='7' opacity='.6'>0</text><text x='41' y='9' font-size='8' opacity='.75'>1</text><text x='54' y='27' font-size='6' opacity='.5'>0</text><text x='11' y='36' font-size='7' opacity='.55'>0</text><text x='31' y='44' font-size='9' opacity='.85'>1</text><text x='48' y='52' font-size='7' opacity='.6'>1</text><text x='5' y='62' font-size='8' opacity='.7'>1</text><text x='24' y='69' font-size='6' opacity='.45'>0</text><text x='57' y='68' font-size='8' opacity='.8'>0</text></g></svg>");
-  background-size: 64px 72px;
-  background-position: calc(100% - var(--posx) * 1%) calc(100% - var(--posy) * 1%);
-  mix-blend-mode: color-dodge;
-  filter: drop-shadow(0 0 2px rgba(110, 255, 170, 0.8));
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='140' font-family='monospace' font-size='9' font-weight='700'><g fill='%2367E8F9'><text x='4' y='8' opacity='0.27'>1</text><text x='4' y='18' opacity='0.39'>0</text><text x='4' y='28' opacity='0.51'>1</text><text x='4' y='38' opacity='0.64'>1</text><text x='4' y='48' opacity='0.76'>0</text><text x='4' y='58' opacity='0.88'>0</text><text x='4' y='68' opacity='1.0'>1</text></g><g fill='%2386EFAC'><text x='26' y='62' opacity='0.32'>0</text><text x='26' y='72' opacity='0.49'>1</text><text x='26' y='82' opacity='0.66'>1</text><text x='26' y='92' opacity='0.83'>0</text><text x='26' y='102' opacity='1.0'>1</text></g><text x='4' y='78' fill='%23ECFEFF'>1</text><text x='26' y='112' fill='%23F0FDF4'>0</text></svg>");
-    background-size: 48px 140px;
-    background-position: calc(var(--posx) * 0.4%) 0;
-    animation: digital-rain 5s linear infinite;
-    opacity: 0.85;
-    -webkit-mask-image: radial-gradient(circle at calc(var(--mx) * 1%) calc(var(--my) * 1%), #000 0%, rgba(0, 0, 0, 0.35) 70%);
-    mask-image: radial-gradient(circle at calc(var(--mx) * 1%) calc(var(--my) * 1%), #000 0%, rgba(0, 0, 0, 0.35) 70%);
-  }
-}
-
-@keyframes digital-rain {
-  from {
-    background-position-y: 0;
-  }
-  to {
-    background-position-y: 140px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sparkle::after {
-    animation: none;
-  }
-}
-
-.face.tier-rare .shine {
-  display: block;
-  opacity: calc(0.2 + min(var(--hyp), 1) * 0.35);
-}
-
-.face.tier-super .shine {
-  display: block;
-  opacity: calc(0.3 + min(var(--hyp), 1) * 0.4);
-}
-
-.face.tier-super .sparkle {
-  display: block;
-  opacity: calc(0.35 + min(var(--hyp), 1) * 0.45);
-}
-
-// Idle shimmer on super tier cards while the pointer is not on them.
-.tilt:not(.is-active) .face.tier-super .shine {
-  animation: hcd-shimmer 4s ease-in-out infinite alternate;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tilt,
-  .flip,
-  .face.tier-super .shine {
-    animation: none !important;
-    transition: none !important;
-  }
-}
+@include holo.holo-styles;

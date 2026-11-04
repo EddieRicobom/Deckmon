@@ -13,7 +13,8 @@ import {
 import { ImgFallbackDirective } from '@directives';
 import { DigimonCard } from '@models';
 
-export type HoloTier = 'common' | 'rare' | 'super';
+/** c = common, u = uncommon, r = rare, sr = super rare "digital", sec = secret "gold", p = promo "cosmic", aa = alt art / textured "prismatic". */
+export type HoloTier = 'c' | 'u' | 'r' | 'sr' | 'sec' | 'p' | 'aa';
 
 interface TiltSpring {
   x: number;
@@ -26,13 +27,28 @@ const TILT_MAX = 14;
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
-export function holoTierOf(card: DigimonCard): HoloTier {
-  const rarity = (card.rarity || '').toUpperCase();
-  const version = card.version || '';
-  const altArt = /Foil|Alternative|Textured/i.test(version);
-  if (rarity === 'SEC' || rarity === 'SR' || rarity === 'UR' || altArt) return 'super';
-  if (rarity === 'R' || rarity === 'P' || /Reprint|Stamp|Pre-Release/i.test(version)) return 'rare';
-  return 'common';
+// Alt-art / textured / foil printings override rarity. `variant` is an optional printing type
+// (for example an AAs[].type string when an alternate art is shown). In the current data every
+// card's `version` is "Normal", so the variant is what makes an alt-art print show as 'aa'.
+const ALT_PRINTING = /Alternative|Textured|Foil|Stamp|Box Topper/i;
+
+export function holoTierOf(card: DigimonCard, variant?: string): HoloTier {
+  if (ALT_PRINTING.test(`${variant ?? ''} ${card.version ?? ''}`)) return 'aa';
+  switch ((card.rarity || '').toUpperCase()) {
+    case 'UR':
+    case 'SEC':
+      return 'sec';
+    case 'SR':
+      return 'sr';
+    case 'R':
+      return 'r';
+    case 'U':
+      return 'u';
+    case 'P':
+      return 'p';
+    default:
+      return 'c';
+  }
 }
 
 /**
@@ -50,7 +66,7 @@ export function holoTierOf(card: DigimonCard): HoloTier {
   template: `
     <div
       #tilt
-      class="tilt"
+      class="tilt is-live"
       role="button"
       tabindex="0"
       [attr.aria-label]="card.name.english + (flipped ? ' (back, click to show front)' : ' (click to flip)')"
@@ -58,7 +74,7 @@ export function holoTierOf(card: DigimonCard): HoloTier {
       (keydown.enter)="onKey($event)"
       (keydown.space)="onKey($event)">
       <div class="flip" [class.is-flipped]="flipped">
-        <div class="face front" [class.tier-rare]="tier === 'rare'" [class.tier-super]="tier === 'super'">
+        <div class="face front" [class]="'holo-' + tier">
           <img
             class="art"
             [digimonImgFallback]="imageSrc"
@@ -67,6 +83,7 @@ export function holoTierOf(card: DigimonCard): HoloTier {
             decoding="async"
             draggable="false" />
           <div class="shine"></div>
+          <div class="fx"></div>
           <div class="glare"></div>
           <div class="sparkle"></div>
         </div>
@@ -84,6 +101,8 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   @Input() imageUrl?: string;
   /** Width in px. Omit to fill the parent width. Height follows the 63:88 card ratio. */
   @Input() size?: number;
+  /** Printing type of the shown art (for example an alt-art type string). Makes alt-art prints use the 'aa' foil. */
+  @Input() variant?: string;
 
   @ViewChild('tilt', { static: true }) tiltRef!: ElementRef<HTMLElement>;
 
@@ -92,7 +111,7 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   private readonly spring: TiltSpring = { x: 0, y: 0, tx: 0, ty: 0 };
   private frame = 0;
 
-  tier: HoloTier = 'common';
+  tier: HoloTier = 'c';
   flipped = false;
 
   get imageSrc(): string {
@@ -104,8 +123,8 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['card'] && this.card) {
-      this.tier = holoTierOf(this.card);
+    if ((changes['card'] || changes['variant']) && this.card) {
+      this.tier = holoTierOf(this.card, this.variant);
       if (!changes['card'].firstChange) this.flipped = false;
     }
   }

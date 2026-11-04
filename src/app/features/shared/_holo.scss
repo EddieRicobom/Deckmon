@@ -1,0 +1,352 @@
+// Shared holo foil styles for card faces.
+// Included by holo-card-3d and deck-3d-viewer via `@include holo.holo-styles;`.
+// Angular component styles are encapsulated, so each component emits its own copy.
+//
+// Tiers are classes on the .face: holo-c | holo-u | holo-r | holo-sr | holo-sec | holo-p | holo-aa.
+// Pointer driven through --mx/--my (0..100), --posx/--posy (0..100) and --hyp (0..1).
+// Only transform, opacity and background-position are animated. Idle animation runs only on
+// cards that face the viewer (.is-front, .is-focus, .is-live) and never while pointed at.
+// Colour-dodge layers stay at or below ~0.7 opacity; every layer fades over the bottom of the card.
+
+$on: '.tilt:is(.is-front, .is-focus, .is-live, .is-active)';
+$live: '.tilt:is(.is-front, .is-focus, .is-live):not(.is-active)';
+$lit: '.tilt:is(:hover, :focus-visible, .is-active, .is-focus)';
+
+// Radial reveal around the pointer, faded over the bottom ~35% (effect text box).
+@mixin holo-mask($r: 70%, $far: 0.4) {
+  $radial: radial-gradient(circle at calc(var(--mx) * 1%) calc(var(--my) * 1%), #000 0, rgba(0, 0, 0, $far) $r);
+  $fade: linear-gradient(#000 60%, rgba(0, 0, 0, 0.25) 88%);
+  -webkit-mask-image: $radial, $fade;
+  mask-image: $radial, $fade;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+// Rainbow prism foil (colour-dodge, darkened so it reads as colour).
+@mixin foil($base, $gain, $filter: brightness(0.55) contrast(1.5) saturate(1.3)) {
+  display: block;
+  background-image: repeating-linear-gradient(115deg, transparent 0 22%, rgba(255, 255, 255, 0.28) 32%, transparent 42%),
+    linear-gradient(115deg, #ff5e8a, #ffd166 16%, #6ee7b7 33%, #60a5fa 50%, #c084fc 66%, #f472b6 83%, #ffd166);
+  background-size: 250% 250%, 300% 300%;
+  background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%), calc(var(--posx) * 1%) calc(var(--posy) * 1%);
+  mix-blend-mode: color-dodge;
+  filter: $filter;
+  opacity: calc(#{$base} + min(var(--hyp), 1) * #{$gain});
+}
+
+@mixin holo-styles {
+  @keyframes holo-rain {
+    from {
+      background-position-y: 0;
+    }
+    to {
+      background-position-y: 160px;
+    }
+  }
+
+  @keyframes holo-fall {
+    to {
+      background-position-y: 220px;
+    }
+  }
+
+  @keyframes holo-pulse {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes holo-sweep {
+    0%,
+    60% {
+      background-position: 130% 0;
+    }
+    100% {
+      background-position: -30% 0;
+    }
+  }
+
+  @keyframes holo-sweep-slow {
+    from {
+      background-position: 0% 0%, 0% 0%;
+    }
+    to {
+      background-position: 100% 100%, 100% 100%;
+    }
+  }
+
+  @keyframes holo-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes holo-drift {
+    to {
+      background-position: 90px 120px;
+    }
+  }
+
+  @keyframes holo-drift-rev {
+    to {
+      background-position: -170px 210px;
+    }
+  }
+
+  // Base: every face shows its halo through --halo (transparent for common cards).
+  .face {
+    --halo: transparent;
+    transition: box-shadow 0.45s ease;
+  }
+
+  .shine,
+  .fx,
+  .sparkle {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    display: none;
+    @include holo-mask;
+  }
+
+  .glare {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at calc(var(--mx) * 1%) calc(var(--my) * 1%),
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0.12) 35%,
+      transparent 65%
+    );
+    mix-blend-mode: overlay;
+    opacity: calc(0.3 + min(var(--hyp), 1) * 0.4);
+    mask-image: linear-gradient(#000 60%, rgba(0, 0, 0, 0.25) 88%);
+    -webkit-mask-image: linear-gradient(#000 60%, rgba(0, 0, 0, 0.25) 88%);
+  }
+
+  // Digital: Matrix 1/0 glyphs. Static layer drifts with the pointer, ::after rains down.
+  .sparkle {
+    overflow: hidden;
+    // Back layer: sparse, huge (~34px in card scale), faint digits drifting slowly.
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='220' font-family='monospace' font-weight='700' font-size='34'><g fill='%237CFFB2'><text x='8' y='40' opacity='.5'>1</text><text x='70' y='120' opacity='.35'>0</text><text x='30' y='190' opacity='.45'>1</text></g></svg>");
+    background-size: 120px 220px;
+    background-position: calc(100% - var(--posx) * 1%) calc(100% - var(--posy) * 1%);
+    mix-blend-mode: color-dodge;
+    filter: drop-shadow(0 0 2px rgba(110, 255, 170, 0.8));
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      // Front layer: sparse, bold ~20px digits raining faster than the back layer.
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='90' height='160' font-family='monospace' font-weight='700' font-size='20'><g fill='%2367E8F9'><text x='6' y='22' opacity='.8'>1</text><text x='50' y='70' opacity='.6'>0</text><text x='18' y='118' opacity='.9'>1</text></g><text x='62' y='142' fill='%23ECFEFF'>0</text></svg>");
+      background-size: 90px 160px;
+      background-position: calc(var(--posx) * 0.4%) 0;
+      opacity: 0.85;
+    }
+  }
+
+  // Common: glare only. Rare: prism + vertical holo lines.
+  .holo-r .shine {
+    @include foil(0.2, 0.35);
+  }
+
+  .holo-r .fx {
+    display: block;
+    background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 5px, transparent 6px 12px);
+    background-position: calc(var(--posx) * 1%) 0;
+    mix-blend-mode: soft-light;
+    opacity: 0.6;
+  }
+
+  // Ultra-rare "Digital": rain + lower-key prism + hex circuit revealed tightly at the pointer.
+  .holo-sr .shine {
+    @include foil(0.15, 0.3);
+  }
+
+  .holo-sr .sparkle {
+    display: block;
+    opacity: calc(0.3 + min(var(--hyp), 1) * 0.35);
+  }
+
+  .holo-sr .fx {
+    display: block;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='42'><path d='M12 1L23 7.5V20.5L12 27L1 20.5V7.5Z' fill='none' stroke='%2367E8F9' stroke-width='.8'/></svg>");
+    background-size: 24px 42px;
+    mix-blend-mode: screen;
+    opacity: 0.7;
+    @include holo-mask(38%, 0);
+  }
+
+  // Secret: gold. Gold glyph rain, god rays from the pointer, gold shimmer sweep and edge pulse.
+  .holo-sec .shine {
+    display: block;
+    background-image: repeating-linear-gradient(115deg, transparent 0 22%, rgba(255, 240, 190, 0.5) 32%, transparent 42%),
+      linear-gradient(115deg, #7a4d0b, #ffd86b 20%, #fff3c4 35%, #c8891c 55%, #ffe08a 75%, #7a4d0b);
+    background-size: 250% 250%, 300% 300%;
+    background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%), calc(var(--posx) * 1%) calc(var(--posy) * 1%);
+    mix-blend-mode: color-dodge;
+    filter: brightness(0.6) contrast(1.4);
+    opacity: calc(0.25 + min(var(--hyp), 1) * 0.35);
+  }
+
+  #{$live} .holo-sec .shine {
+    animation: holo-sweep 6s ease-in-out infinite;
+  }
+
+  .holo-sec .sparkle {
+    display: block;
+    opacity: calc(0.3 + min(var(--hyp), 1) * 0.35);
+    filter: sepia(1) saturate(5) hue-rotate(-12deg) brightness(1.1);
+  }
+
+  .holo-sec .fx {
+    display: block;
+    background-image: repeating-conic-gradient(from 0deg at calc(var(--mx) * 1%) calc(var(--my) * 1%), rgba(255, 214, 120, 0.5) 0deg 4deg, transparent 4deg 16deg);
+    mix-blend-mode: screen;
+    opacity: calc(0.2 + min(var(--hyp), 1) * 0.3);
+    @include holo-mask(60%);
+  }
+
+  .holo-sec .fx::after {
+    content: '';
+    position: absolute;
+    inset: -60%;
+    background-image: repeating-conic-gradient(rgba(255, 236, 170, 0.6) 0deg 2deg, transparent 2deg 24deg);
+    opacity: 0.35;
+  }
+
+  .holo-sec::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 2px rgba(255, 205, 110, 0.85), inset 0 0 16px rgba(255, 190, 80, 0.55);
+  }
+
+  // Promo: cosmic. Two parallax starfields plus a purple/teal aurora.
+  .holo-p .shine {
+    display: block;
+    background-image: linear-gradient(160deg, transparent 20%, rgba(168, 85, 247, 0.65) 40%, rgba(45, 212, 191, 0.6) 58%, transparent 78%);
+    background-size: 200% 200%;
+    background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%);
+    mix-blend-mode: color-dodge;
+    filter: saturate(1.4) brightness(0.8);
+    opacity: calc(0.25 + min(var(--hyp), 1) * 0.35);
+  }
+
+  .holo-p .fx {
+    display: block;
+    background-image: radial-gradient(1px 1px at 15% 25%, #fff, transparent), radial-gradient(1px 1px at 70% 60%, #dbeafe, transparent),
+      radial-gradient(1.5px 1.5px at 40% 85%, #fff, transparent), radial-gradient(1px 1px at 88% 12%, #fff, transparent);
+    background-size: 90px 120px;
+    background-position: calc(var(--posx) * -0.4%) calc(var(--posy) * -0.4%);
+    mix-blend-mode: screen;
+    opacity: 0.8;
+  }
+
+  .holo-p .fx::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(1.5px 1.5px at 30% 40%, #fff, transparent), radial-gradient(1px 1px at 75% 15%, #e9d5ff, transparent),
+      radial-gradient(1px 1px at 55% 90%, #99f6e4, transparent);
+    background-size: 170px 210px;
+    background-position: calc(var(--posx) * -1%) calc(var(--posy) * -1%);
+  }
+
+  #{$live} .holo-p .fx {
+    animation: holo-drift 30s linear infinite;
+  }
+
+  #{$live} .holo-p .fx::after {
+    animation: holo-drift-rev 45s linear infinite;
+  }
+
+  // Alt art / textured / foil: prismatic glass with crosshatch texture and a bevel emboss.
+  .holo-aa .shine {
+    @include foil(0.3, 0.35, brightness(0.6) contrast(1.5) saturate(1.5) hue-rotate(calc(var(--hyp) * 90deg)));
+  }
+
+  #{$live} .holo-aa .shine {
+    animation: holo-sweep-slow 8s ease-in-out infinite alternate;
+  }
+
+  .holo-aa .fx {
+    display: block;
+    background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 5px);
+    mix-blend-mode: soft-light;
+    opacity: 0.8;
+  }
+
+  .holo-aa::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.3), inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  // Outer halo colour per tier, shown when the card is hovered, focused or tilted.
+  .holo-r {
+    --halo: rgba(96, 165, 250, 0.45);
+  }
+  .holo-sr {
+    --halo: rgba(110, 255, 170, 0.45);
+  }
+  .holo-sec {
+    --halo: rgba(255, 200, 90, 0.6);
+  }
+  .holo-p {
+    --halo: rgba(168, 85, 247, 0.5);
+  }
+  .holo-aa {
+    --halo: rgba(244, 114, 182, 0.45);
+  }
+
+  #{$lit} .face {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 26px 4px var(--halo, transparent);
+  }
+
+  // Idle animation, only on cards that face the viewer. Rain and pulses also run while tilted.
+  #{$on} .holo-sr .sparkle::after,
+  #{$on} .holo-sec .sparkle::after {
+    animation: holo-rain 3s linear infinite;
+  }
+
+  #{$live} .holo-sr .sparkle,
+  #{$live} .holo-sec .sparkle {
+    animation: holo-fall 14s linear infinite;
+  }
+
+  #{$on} .holo-sec .fx::after {
+    animation: holo-spin 40s linear infinite;
+  }
+
+  #{$on} .holo-sec::before,
+  #{$on} .holo-aa::before {
+    animation: holo-pulse 2.6s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tilt,
+    .tilt *,
+    .tilt *::before,
+    .tilt *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
