@@ -1,0 +1,73 @@
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: block;
+}
+
+.hf-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 45%, rgba(40, 60, 120, 0.55), rgba(3, 5, 12, 0.94) 70%);
+  animation: hf-fade 0.25s ease both;
+  cursor: zoom-out;
+}
+
+.hf-stage {
+  width: min(80vw, calc(72vh * 63 / 88));
+  cursor: default;
+  perspective: 1200px;
+}
+
+.hf-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  height: 36px;
+  padding: 0 0.9rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8ecf5;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 2px;
+  }
+}
+
+.hf-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  margin: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #7f8fb0;
+  pointer-events: none;
+}
+
+@keyframes hf-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-backdrop {
+    animation: none;
+  }
+}

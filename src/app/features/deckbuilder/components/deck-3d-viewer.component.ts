@@ -14,8 +14,7 @@ import {
   ViewChild,
 } from '@angular/core';
 import { DigimonCard, IDeckCard } from '@models';
-
-export type HoloTier = 'common' | 'rare' | 'super';
+import { HoloTier, holoTierOf } from '../../shared/holo-card-3d.component';
 
 export interface Deck3DEntry {
   card: DigimonCard;
@@ -41,15 +40,6 @@ const TILT_MAX_FOCUS = 20;
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
-function tierOf(card: DigimonCard): HoloTier {
-  const rarity = (card.rarity || '').toUpperCase();
-  const version = card.version || '';
-  const altArt = /Foil|Alternative|Textured/i.test(version);
-  if (rarity === 'SEC' || rarity === 'SR' || rarity === 'UR' || altArt) return 'super';
-  if (rarity === 'R' || rarity === 'P' || /Reprint|Stamp|Pre-Release/i.test(version)) return 'rare';
-  return 'common';
-}
-
 function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
   const byId = new Map<string, Deck3DEntry>();
   for (const card of cards) {
@@ -58,7 +48,7 @@ function toEntries(cards: IDeckCard[]): Deck3DEntry[] {
     if (existing) {
       existing.count += card.count;
     } else {
-      byId.set(card.id, { card, count: card.count, tier: tierOf(card) });
+      byId.set(card.id, { card, count: card.count, tier: holoTierOf(card) });
     }
   }
   return [...byId.values()];

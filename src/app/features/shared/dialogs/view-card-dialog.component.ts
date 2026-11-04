@@ -1,5 +1,5 @@
 import { NgClass, NgForOf, NgIf, NgStyle } from '@angular/common';
-import { ChangeDetectorRef, Component, effect, HostListener, inject } from '@angular/core';
+import { ApplicationRef, ChangeDetectorRef, Component, EnvironmentInjector, effect, HostListener, inject, OnDestroy } from '@angular/core';
 import { ImgFallbackDirective } from '@directives';
 import { formatId, isDigimonType, isOptionType, replaceWithImageTags, withoutJ } from '@functions';
 import { ColorMap, DigimonCard, ICountCard, IDeck, RarityAbbreviationMap } from '@models';
@@ -9,6 +9,8 @@ import { LazyLoadImageModule } from 'ng-lazyload-image';
 import { ButtonModule } from 'primeng/button';
 import { RippleModule } from 'primeng/ripple';
 import { TooltipModule } from 'primeng/tooltip';
+import { HoloCard3dComponent } from '../holo-card-3d.component';
+import { openHoloCardFullscreen } from '../holo-card-fullscreen.component';
 
 @Component({
   selector: 'digimon-view-card-dialog',
@@ -62,6 +64,7 @@ import { TooltipModule } from 'primeng/tooltip';
         </h1>
         <button (click)="openWiki()" class="p-button-text" icon="pi pi-question-circle" pButton pRipple type="button" pTooltip="Wiki" tooltipPosition="top"></button>
         <button *ngIf="getCardmarketLink()" (click)="openCardmarket()" class="p-button-text" icon="pi pi-shopping-cart" pButton pRipple type="button" pTooltip="Cardmarket" tooltipPosition="top"></button>
+        <button (click)="openFullscreen3d()" class="ml-1 rounded-md px-2 text-sm font-bold text-fg" type="button" aria-label="Open 3D card view" title="3D view">⛶ 3D</button>
         <button class="ml-1" (click)="nextCard()">
           <i class="fa-solid fa-circle-arrow-right text-fg"></i>
         </button>
@@ -69,11 +72,7 @@ import { TooltipModule } from 'primeng/tooltip';
 
       <div class="w-full flex-row md:flex" id="Image-Attributes">
         <div class="w-full md:w-1/2 flex items-center justify-center">
-          <img
-            [digimonImgFallback]="png"
-            alt="{{ imageAlt }}"
-            defaultImage="assets/images/digimon-card-back.webp"
-            class="mx-auto my-5 max-w-[15rem] md:my-0 md:max-w-full object-contain" />
+          <digimon-holo-card-3d [card]="card" class="mx-auto my-5 max-w-[15rem] md:my-0 md:max-w-full"></digimon-holo-card-3d>
         </div>
         <div class="md:max-w-1/2 w-full self-center md:w-1/2 md:pl-2">
           <div
@@ -279,15 +278,18 @@ import { TooltipModule } from 'primeng/tooltip';
     </div>
   `,
   standalone: true,
-  imports: [NgStyle, NgIf, NgClass, ButtonModule, RippleModule, LazyLoadImageModule, ImgFallbackDirective, NgForOf, TooltipModule],
+  imports: [NgStyle, NgIf, NgClass, ButtonModule, RippleModule, LazyLoadImageModule, ImgFallbackDirective, NgForOf, TooltipModule, HoloCard3dComponent],
 })
-export class ViewCardDialogComponent {
+export class ViewCardDialogComponent implements OnDestroy {
   changeDetection = inject(ChangeDetectorRef);
   saveStore = inject(SaveStore);
   dialogStore = inject(DialogStore);
   websiteStore = inject(WebsiteStore);
   digimonCardStore = inject(DigimonCardStore);
   private cardMarketService = inject(CardMarketService);
+  private appRef = inject(ApplicationRef);
+  private envInjector = inject(EnvironmentInjector);
+  private closeFullscreen3d: (() => void) | null = null;
 
   // Helper function exposed to template
   isDigimonType = isDigimonType;
@@ -399,6 +401,16 @@ export class ViewCardDialogComponent {
 
   closeViewCard() {
     this.dialogStore.showViewCardDialog(false);
+  }
+
+  openFullscreen3d() {
+    this.closeFullscreen3d?.();
+    this.closeFullscreen3d = openHoloCardFullscreen(this.appRef, this.envInjector, this.card);
+  }
+
+  ngOnDestroy() {
+    this.closeFullscreen3d?.();
+    this.closeFullscreen3d = null;
   }
 
   private getVersion(version: string) {
