@@ -121,7 +121,8 @@ export class HoloCard3dComponent implements OnChanges, AfterViewInit, OnDestroy 
   }
 
   ngOnDestroy(): void {
-    cancelAnimationFrame(this.frame);
+    // Guard: ngOnDestroy also runs during server prerendering, where rAF does not exist.
+    if (this.frame && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.frame);
     this.frame = 0;
     const el = this.tiltRef?.nativeElement;
     el?.removeEventListener('pointermove', this.onPointerMove);

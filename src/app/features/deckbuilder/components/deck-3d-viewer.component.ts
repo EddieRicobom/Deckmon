@@ -223,7 +223,7 @@ export class Deck3dViewerComponent implements OnChanges, AfterViewInit, OnDestro
   }
 
   ngOnDestroy(): void {
-    cancelAnimationFrame(this.frame);
+    if (this.frame && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.frame);
     const root = this.rootRef?.nativeElement;
     root?.removeEventListener('pointerdown', this.onRootDown);
     root?.removeEventListener('pointermove', this.onRootMove);
