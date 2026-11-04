@@ -10,7 +10,7 @@ import { NavLinksComponent } from './nav-links.component';
   template: `
     <nav class="flex flex-row h-[3.5rem] md:h-[5rem] w-[100vw] max-w-[100vw] border-b border-line bg-ink-1 px-5 items-center">
       <a class="z-[5000]" [href]="appUrl">
-        <img alt="Logo" class="mt-[0.25rem] cursor-pointer max-h-[2.5rem] md:max-h-[3.25rem]" src="assets/images/logo.png" />
+        <span class="flex items-center gap-2 cursor-pointer"><img alt="Deckmon" class="h-[2.25rem] w-[2.25rem] md:h-[2.75rem] md:w-[2.75rem]" src="assets/images/logo.svg" /><span class="hidden lg:inline font-display text-xl font-bold tracking-tight bg-gradient-to-r from-teal-300 via-sky-400 to-violet-400 bg-clip-text text-transparent">Deckmon</span></span>
       </a>
 
       <!-- display: contents lets the search sit between the links and the account cluster -->

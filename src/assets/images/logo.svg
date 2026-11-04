@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Deckmon">
+  <defs>
+    <linearGradient id="dm-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5EEAD4"/>
+      <stop offset=".5" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="dm-c" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F2A3D"/>
+      <stop offset="1" stop-color="#091421"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexagonal data core -->
+  <path d="M32 3 57 17.5v29L32 61 7 46.5v-29Z" fill="url(#dm-c)" stroke="url(#dm-g)" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Two stacked cards, tilted like a fanned hand -->
+  <rect x="18" y="17" width="20" height="28" rx="3" fill="#0B1B2B" stroke="#38BDF8" stroke-width="1.6" transform="rotate(-12 28 31)" opacity=".7"/>
+  <rect x="25" y="18" width="20" height="28" rx="3" fill="#0E2436" stroke="url(#dm-g)" stroke-width="2" transform="rotate(8 35 32)"/>
+  <!-- D glyph built from a circuit trace on the front card -->
+  <path d="M30 24.5h4.5a7.5 7.5 0 0 1 0 15H30Z" fill="none" stroke="url(#dm-g)" stroke-width="3" stroke-linejoin="round" transform="rotate(8 35 32)"/>
+  <circle cx="30.2" cy="24.6" r="1.8" fill="#5EEAD4" transform="rotate(8 35 32)"/>
+  <circle cx="30.2" cy="39.4" r="1.8" fill="#A78BFA" transform="rotate(8 35 32)"/>
+  <!-- Binary sparks -->
+  <g font-family="ui-monospace,Menlo,monospace" font-weight="800" font-size="7" fill="#5EEAD4">
+    <text x="12" y="20" opacity=".9">1</text>
+    <text x="42" y="52" opacity=".8" fill="#A78BFA">0</text>
+  </g>
+</svg>
