@@ -504,7 +504,8 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
         .main-col > digimon-player-board,
         .own-col,
         .own-col > digimon-player-board {
-          flex: 0 0 auto;
+          /* !important: Tailwind is configured with important utilities (flex-1) */
+          flex: 0 0 auto !important;
         }
       }
       .own-col {
