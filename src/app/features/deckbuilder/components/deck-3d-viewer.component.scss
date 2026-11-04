@@ -298,7 +298,8 @@
   background-size: 250% 250%, 300% 300%;
   background-position: calc(var(--posx) * 1%) calc(var(--posy) * 1%), calc(var(--posx) * 1%) calc(var(--posy) * 1%);
   mix-blend-mode: color-dodge;
-  filter: brightness(1.05) contrast(1.15);
+  // color-dodge blows out to white quickly; keep the foil dark so it reads as colour, not glare.
+  filter: brightness(0.55) contrast(1.5) saturate(1.3);
 }
 
 .glare {
@@ -309,7 +310,7 @@
     transparent 65%
   );
   mix-blend-mode: overlay;
-  opacity: calc(0.35 + var(--hyp) * 0.5);
+  opacity: calc(0.3 + min(var(--hyp), 1) * 0.4);
 }
 
 .sparkle {
@@ -325,17 +326,17 @@
 
 .face.tier-rare .shine {
   display: block;
-  opacity: calc(0.3 + var(--hyp) * 0.6);
+  opacity: calc(0.2 + min(var(--hyp), 1) * 0.35);
 }
 
 .face.tier-super .shine {
   display: block;
-  opacity: calc(0.45 + var(--hyp) * 0.6);
+  opacity: calc(0.3 + min(var(--hyp), 1) * 0.4);
 }
 
 .face.tier-super .sparkle {
   display: block;
-  opacity: calc(0.45 + var(--hyp) * 0.5);
+  opacity: calc(0.35 + min(var(--hyp), 1) * 0.45);
 }
 
 // Idle shimmer only on the card that faces the viewer (carousel) when not pointed at.
