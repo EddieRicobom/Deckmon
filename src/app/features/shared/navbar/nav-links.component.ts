@@ -116,6 +116,14 @@ import { MenuItem } from 'primeng/api';
         </li>
 
         <li
+          class="flex flex-col items-center justify-center px-1 xl:px-3 group cursor-pointer"
+          [ngClass]="getNavigationBorder('/play')"
+          (click)="router.navigateByUrl('/play')">
+          <i class="pi pi-play-circle text-accent group-hover:text-accent" style="font-size: 1.5rem"></i>
+          <button style="font-size:smaller" class="p-2 font-semibold text-accent">Play</button>
+        </li>
+
+        <li
           class="hidden xl:flex flex-col items-center justify-center px-1 xl:px-3 group cursor-pointer"
           [ngClass]="getNavigationBorder('/rulings')"
           (click)="router.navigateByUrl('/rulings')">
