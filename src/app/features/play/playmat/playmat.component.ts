@@ -495,6 +495,18 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
       .main-col {
         min-height: 0;
       }
+      /* Desktop/tablet: boards keep their natural height (no squashing that made the opponent's
+         hand spill over the memory gauge); the column scrolls if the window is short. */
+      @media (min-width: 768px) and (min-height: 501px) {
+        .main-col {
+          overflow-y: auto;
+        }
+        .main-col > digimon-player-board,
+        .own-col,
+        .own-col > digimon-player-board {
+          flex: 0 0 auto;
+        }
+      }
       .own-col {
         display: flex;
         flex: 1 1 auto;
