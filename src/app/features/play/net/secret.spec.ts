@@ -1,6 +1,7 @@
 // Node's WebCrypto: jsdom under jest exposes no subtle crypto.
 
-if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: (require('crypto') as { webcrypto: Crypto }).webcrypto, configurable: true });
+if (!globalThis.crypto?.subtle)
+  Object.defineProperty(globalThis, 'crypto', { value: (require('crypto') as { webcrypto: Crypto }).webcrypto, configurable: true });
 
 import { deriveRoomSecrets, openFrame, sealFrame } from './secret';
 

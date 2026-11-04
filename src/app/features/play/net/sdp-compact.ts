@@ -128,7 +128,10 @@ export function parseSdp(sdp: string, kind: SdpKind): SdpParts | null {
     else if ((m = /^a=sctp-port:(\d+)$/.exec(line))) sctpPort = Number(m[1]);
     else if ((m = /^a=max-message-size:(\d+)$/.exec(line))) maxMessage = Number(m[1]);
     else if (line.startsWith('a=candidate:')) {
-      const c = /^a=candidate:\S+ 1 udp (\d+) (\S+) (\d+) typ (host|srflx)(?: raddr \S+ rport \d+)?(?: generation \d+)?(?: network-id \d+)?(?: network-cost \d+)?$/i.exec(line);
+      const c =
+        /^a=candidate:\S+ 1 udp (\d+) (\S+) (\d+) typ (host|srflx)(?: raddr \S+ rport \d+)?(?: generation \d+)?(?: network-id \d+)?(?: network-cost \d+)?$/i.exec(
+          line,
+        );
       if (!c) return null; // TCP, relay, component 2, or an unknown field
       const address = c[2]!;
       if (address.toLowerCase().startsWith('fe80:')) continue; // link-local: useless off the device

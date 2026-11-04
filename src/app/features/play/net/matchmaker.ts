@@ -135,11 +135,7 @@ function text(value: unknown, max: number): string {
 
 /** A name from a stranger: no control or direction characters, single spaces, short. */
 export function cleanName(value: unknown, max = 24): string {
-  return text(value, 80)
-    .replace(/\p{C}/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
+  return text(value, 80).replace(/\p{C}/gu, '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 /** Room name chosen by the host, up to 32 characters. */
@@ -167,11 +163,7 @@ export class Matchmaker<P extends MatchPeer = PvpPeer> {
       const now = Date.now();
       for (const [code, room] of rooms) if (now - room.seenAt > this.timings.roomTtlMs) rooms.delete(code);
       // Ordered by when the room appeared, not by the last ad, so the list does not jump under a tap.
-      onRooms(
-        [...rooms.values()]
-          .sort((a, b) => b.createdAt - a.createdAt)
-          .map(({ hid: _hid, ...room }) => room),
-      );
+      onRooms([...rooms.values()].sort((a, b) => b.createdAt - a.createdAt).map(({ hid: _hid, ...room }) => room));
     };
     const off = this.hub.subscribe(this.lobbyTopic, (m: Frame) => {
       if (m.r !== 'h') return;
@@ -394,9 +386,7 @@ export class Matchmaker<P extends MatchPeer = PvpPeer> {
       } catch (e) {
         const noCandidates = e instanceof NoCandidatesError;
         diag('HX', noCandidates ? 'sem-candidatos' : 'erro');
-        handlers.onError(
-          noCandidates ? new PvpError('no-candidates', NO_CANDIDATES_MESSAGE) : new PvpError('webrtc', WEBRTC_PROBLEM),
-        );
+        handlers.onError(noCandidates ? new PvpError('no-candidates', NO_CANDIDATES_MESSAGE) : new PvpError('webrtc', WEBRTC_PROBLEM));
         stop(true);
       } finally {
         preparing = false;
@@ -502,7 +492,9 @@ export class Matchmaker<P extends MatchPeer = PvpPeer> {
       if (!alive || m.r !== 'h' || text(m.gid, 24) !== gid) return;
       if (m.t === 'busy') {
         diag('G7');
-        return fail(new PvpError('room-busy', 'Essa sala já está com outro jogador. Peça para o anfitrião abrir outra, ou espere um instante.'));
+        return fail(
+          new PvpError('room-busy', 'Essa sala já está com outro jogador. Peça para o anfitrião abrir outra, ou espere um instante.'),
+        );
       }
       if (m.t !== 'offer' || answered) return;
       const offer = text(m.offer, MAX_OFFER);

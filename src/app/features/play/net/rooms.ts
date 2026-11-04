@@ -333,21 +333,27 @@ export class PvpClient {
       this.code = code;
       this.emitCode(code);
       this.setStatus('signaling');
-      this.joinCancel = this.mm().join(code, name, password, {
-        onStatus: (_text, phase) => this.setStatus(phase),
-        onPeer: (peer) => {
-          this.joinCancel = null;
-          this.pendingReject = null;
-          this.attach(peer);
-          resolve();
+      this.joinCancel = this.mm().join(
+        code,
+        name,
+        password,
+        {
+          onStatus: (_text, phase) => this.setStatus(phase),
+          onPeer: (peer) => {
+            this.joinCancel = null;
+            this.pendingReject = null;
+            this.attach(peer);
+            resolve();
+          },
+          onError: (error) => {
+            this.joinCancel = null;
+            this.pendingReject = null;
+            this.setStatus('failed');
+            reject(error);
+          },
         },
-        onError: (error) => {
-          this.joinCancel = null;
-          this.pendingReject = null;
-          this.setStatus('failed');
-          reject(error);
-        },
-      }, ROOM_CODE_LENGTH);
+        ROOM_CODE_LENGTH,
+      );
     });
   }
 
