@@ -122,9 +122,13 @@ export function remindStack(state: GameState, owner: PlayerIndex, stack: Stack, 
   if (top) remind(state, owner, top.cardId, timing);
 }
 
-/** Memory spent by a cost. A cost needs at least 1 memory on your side unless it is 0. */
+/**
+ * Official rule: during your turn (memory 0 or on your side) you may pay any cost, even more
+ * than you have; the gauge moves to the opponent's side (capped at 10) and your turn ends after
+ * the action. So a cost is payable whenever it is still your turn.
+ */
 export function canPay(state: GameState, cost: number): boolean {
-  return cost <= 0 || state.memory >= 1;
+  return cost <= 0 || state.memory >= 0;
 }
 
 /** Spends memory toward the opponent. The gauge may cross to their side; the turn then ends after the action. */

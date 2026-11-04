@@ -232,9 +232,16 @@ describe('assisted turn flow', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('play and digivolve', () => {
-  it('refuses to play a card the player cannot pay for', () => {
+  it('allows paying more memory than you have (gauge crosses over, turn then ends)', () => {
     const s = game();
     s.memory = 0;
+    s.players[0].hand = [c(0, 'h', 'COST1')];
+    expect(err(s, playHand(0, 'p0-h'))).toBeFalsy();
+  });
+
+  it('refuses to pay once memory is already on the opponent side', () => {
+    const s = game();
+    s.memory = -1;
     s.players[0].hand = [c(0, 'h', 'COST1')];
     expect(err(s, playHand(0, 'p0-h'))).toMatch(/Not enough memory/);
   });
