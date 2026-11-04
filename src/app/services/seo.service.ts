@@ -27,7 +27,7 @@ export class SeoService {
   }
 
   set(title: string, description: string) {
-    const fullTitle = `${title} | digimoncard.app`;
+    const fullTitle = `${title} | Deckmon`;
     this.title.setTitle(fullTitle);
     this.meta.updateTag({ name: 'description', content: description });
     this.meta.updateTag({ property: 'og:title', content: fullTitle });

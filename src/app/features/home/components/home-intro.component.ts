@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { Router, RouterLink } from '@angular/router';
 import { IDeck } from '@models';
 import { AuthService } from '@services';
-import { DialogStore, SaveStore, WebsiteStore } from '@store';
+import { SaveStore, WebsiteStore } from '@store';
 import { HomeMetaComponent } from './home-meta.component';
 
 @Component({
@@ -12,17 +12,10 @@ import { HomeMetaComponent } from './home-meta.component';
     <div class="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 md:px-6 md:py-12">
       <section class="flex flex-wrap items-stretch gap-6">
         <div class="flex min-w-0 flex-[999_1_32rem] flex-col justify-center gap-5">
-          <button
-            type="button"
-            (click)="showChangelog()"
-            class="inline-flex items-center gap-2 self-start rounded-full border border-line bg-ink-1 py-1 pl-1 pr-3 text-sm text-fg hover:border-accent">
-            <span class="rounded-full bg-accent px-2 py-0.5 font-mono text-xs font-semibold text-accent-ink">v6.0</span>
-            New card search, deck pages and redesign <i class="pi pi-arrow-right text-xs text-muted"></i>
-          </button>
-          <h1 class="m-0 font-display text-4xl font-bold leading-none text-fg md:text-6xl">Digimon Card App</h1>
+          <h1 class="m-0 font-display text-4xl font-bold leading-none text-fg md:text-6xl">Deckmon</h1>
           <p class="m-0 max-w-xl text-base leading-relaxed text-muted md:text-lg">
-            Deck builder, collection tracker and card database for the Digimon Card Game. Card data is loaded once a day from
-            <span class="font-semibold text-fg">DigimonCardGame.Fandom</span>, thanks to their effort.
+            Deck builder, collection tracker and card database for the Digimon Card Game. Search every card, build and price-check decks,
+            track what you own and inspect cards in a 3D holo viewer. Everything runs in your browser as a static site.
           </p>
           <div class="flex flex-wrap gap-3">
             <a routerLink="/cards" class="inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 font-semibold text-accent-ink no-underline">
@@ -71,32 +64,14 @@ import { HomeMetaComponent } from './home-meta.component';
 
       <section class="flex flex-wrap items-center justify-between gap-6 border-t border-line pt-8">
         <div class="flex min-w-0 flex-[1_1_28rem] flex-col gap-3">
-          <h2 class="m-0 font-display text-xl font-semibold text-fg">Help shape Digimoncard.app</h2>
+          <h2 class="m-0 font-display text-xl font-semibold text-fg">About Deckmon</h2>
           <p class="m-0 text-sm leading-relaxed text-muted">
-            Feedback and suggestions are always welcome on Discord and GitHub. I'm also <span class="font-semibold text-fg">looking for people</span>
-            who want to help maintain the website, design new features and implement them.
+            Deckmon is open source under the MIT license. Bug reports, ideas and code contributions are welcome on GitHub.
           </p>
           <div class="flex flex-wrap items-center gap-4 text-sm">
-            <button type="button" (click)="openSupport()" class="inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 font-semibold text-accent-ink">
-              <i class="pi pi-heart-fill"></i> Support digimoncard.app
-            </button>
-            <button type="button" (click)="showChangelog()" class="text-accent hover:underline">Changelog</button>
-            <a class="text-accent no-underline hover:underline" href="https://discordapp.com/users/189436886744432640" target="_blank">Discord</a>
-            <a class="text-accent no-underline hover:underline" href="https://github.com/TakaOtaku/Digimon-Card-App" target="_blank">GitHub</a>
-            <a class="text-accent no-underline hover:underline" href="https://twitter.com/digimoncardapp" target="_blank">X / Twitter</a>
+            <a class="text-accent no-underline hover:underline" href="https://github.com/EddieRicobom/Deckmon" target="_blank" rel="noopener">GitHub</a>
           </div>
-        </div>
-
-        <div class="flex flex-col gap-3">
-          <h2 class="m-0 text-xs font-semibold uppercase tracking-wider text-muted">Partners</h2>
-          <div class="flex flex-row gap-6">
-            @for (partner of partners; track partner.name) {
-              <a class="flex flex-col items-center gap-1 text-fg no-underline" [href]="partner.url" target="_blank">
-                <img class="h-14 w-14 rounded-full object-cover" [src]="partner.img" [alt]="partner.name" width="56" height="56" />
-                <span class="text-xs font-semibold">{{ partner.name }}</span>
-              </a>
-            }
-          </div>
+          <p class="m-0 text-xs text-muted">Card data from the DigimonCardGame Fandom wiki (CC BY-SA).</p>
         </div>
       </section>
     </div>
@@ -110,7 +85,6 @@ export class HomeIntroComponent {
   private websiteStore = inject(WebsiteStore);
   private authService = inject(AuthService);
   private router = inject(Router);
-  private dialogStore = inject(DialogStore);
 
   recentDecks = computed(() =>
     [...(this.saveStore.decks() ?? [])].sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0)).slice(0, 3),
@@ -122,20 +96,6 @@ export class HomeIntroComponent {
     { url: '/collection', icon: 'pi-folder', title: 'Collection', text: 'Track owned cards and set completion.' },
     { url: '/decks', icon: 'pi-table', title: 'Community decks', text: 'Browse shared decks and the archetype tier list.' },
   ];
-
-  partners = [
-    { name: 'AVAULT', url: 'https://www.youtube.com/@AVAULT', img: 'assets/images/partners/avault.jpg' },
-    { name: 'Digimon TCG DACH', url: 'https://discord.gg/digimon-tcg-dach-759562127513223168', img: 'assets/images/partners/dach.png' },
-    { name: 'East', url: 'https://www.youtube.com/East_ML', img: 'assets/images/partners/east.jpg' },
-  ];
-
-  openSupport() {
-    this.dialogStore.updateSupportDialog(true);
-  }
-
-  showChangelog() {
-    this.dialogStore.updateChangelogDialog(true);
-  }
 
   cardCount(deck: IDeck): number {
     return (deck.cards ?? []).reduce((sum, card) => sum + card.count, 0);

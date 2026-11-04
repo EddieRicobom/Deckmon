@@ -57,20 +57,10 @@ import { MenuItem } from 'primeng/api';
           <button type="button" (click)="openSettings(); done.emit()" class="flex h-12 items-center gap-3 px-4 text-left text-fg">
             <i class="pi pi-cog text-muted"></i><span class="flex-1">Settings</span><i class="pi pi-chevron-right text-xs text-muted"></i>
           </button>
-          <button type="button" (click)="openSupport(); done.emit()" class="flex h-12 items-center gap-3 px-4 text-left text-fg">
-            <i class="pi pi-heart-fill text-pink-400"></i><span class="flex-1">Support digimoncard.app</span><i class="pi pi-chevron-right text-xs text-muted"></i>
-          </button>
-          <button type="button" (click)="showChangelog(); done.emit()" class="flex h-12 items-center gap-3 px-4 text-left text-fg">
-            <i class="pi pi-sparkles text-muted"></i><span class="flex-1">What's new</span>
-            <span class="font-mono text-xs text-muted">v{{ version }}</span><i class="pi pi-chevron-right text-xs text-muted"></i>
-          </button>
         </div>
 
         <div class="flex justify-center gap-6 text-muted">
-          <a href="https://github.com/TakaOtaku/Digimon-Card-App" target="_blank" aria-label="GitHub" class="text-muted hover:text-accent"><i class="pi pi-github text-lg"></i></a>
-          <a href="https://twitter.com/digimoncardapp" target="_blank" aria-label="X / Twitter" class="text-muted hover:text-accent"><i class="pi pi-twitter text-lg"></i></a>
-          <a href="https://discordapp.com/users/189436886744432640" target="_blank" aria-label="Discord" class="text-muted hover:text-accent"><i class="pi pi-discord text-lg"></i></a>
-          <a href="https://www.paypal.com/donate/?hosted_button_id=WLM58Q785D4H4" target="_blank" aria-label="Donate with PayPal" class="text-muted hover:text-accent"><i class="pi pi-paypal text-lg"></i></a>
+          <a href="https://github.com/EddieRicobom/Deckmon" target="_blank" aria-label="GitHub" class="text-muted hover:text-accent"><i class="pi pi-github text-lg"></i></a>
         </div>
       </div>
     } @else {
@@ -150,13 +140,6 @@ import { MenuItem } from 'primeng/api';
       </ul>
       <p-menu #moreMenu [model]="moreItems" [popup]="true" appendTo="body"></p-menu>
       <div class="order-1 ml-3 flex flex-row items-center gap-2">
-        <button
-          type="button"
-          (click)="openSupport()"
-          aria-label="Support digimoncard.app"
-          class="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-ink-2 px-3 text-sm font-semibold text-fg hover:border-pink-400">
-          <i class="pi pi-heart-fill text-pink-400"></i><span class="hidden 2xl:inline">Support</span>
-        </button>
         <a
           href="/deckbuilder"
           (click)="$event.preventDefault(); router.navigateByUrl('/deckbuilder')"
@@ -193,7 +176,6 @@ export class NavLinksComponent {
   @Input() sidebar = false;
   // Sheet mode: tell the host to close after any action
   @Output() done = new EventEmitter<void>();
-  readonly version = '6.0.0';
   sheetLinks = [
     { url: '/', label: 'Home', icon: 'pi-home' },
     { url: '/cards', label: 'Cards', icon: 'pi-clone' },
@@ -217,8 +199,6 @@ export class NavLinksComponent {
   moreItems: MenuItem[] = [
     { label: 'Rulings', icon: 'pi pi-question-circle', routerLink: '/rulings' },
     { label: 'Products', icon: 'pi pi-tags', routerLink: '/products' },
-    { separator: true },
-    { label: "What's new", icon: 'pi pi-sparkles', command: () => this.showChangelog() },
   ];
   moreActive = computed(() => ['/rulings', '/products'].includes(this.route()));
 
@@ -272,13 +252,5 @@ export class NavLinksComponent {
 
   openSettings() {
     this.dialogStore.updateSettingsDialog(true);
-  }
-
-  openSupport() {
-    this.dialogStore.updateSupportDialog(true);
-  }
-
-  showChangelog() {
-    this.dialogStore.updateChangelogDialog(true);
   }
 }

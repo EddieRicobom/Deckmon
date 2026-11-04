@@ -6,7 +6,7 @@ export const ADMINS = [
     editEvents: true,
   },
   {
-    id: '864x9WGJa5WR32egGNLiJKqJaL83', //digimoncard.app@gmail.com
+    id: '864x9WGJa5WR32egGNLiJKqJaL83', // legacy admin account
     admin: false,
     writeBlog: true,
     editEvents: true,

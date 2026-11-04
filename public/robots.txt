@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /migration
 
-Sitemap: https://digimoncard.app/sitemap.xml
+Sitemap: https://eddiericobom.github.io/Deckmon/sitemap.xml

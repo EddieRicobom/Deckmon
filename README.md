@@ -1,166 +1,71 @@
-<div id="top"></div>
-<!--[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]-->
+# Deckmon
 
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://github.com/TakaOtaku/Digimon-Card-App">
-    <img src="src/assets/images/logo.png" alt="Logo" height="80">
-  </a>
+Deckmon is a deck builder and collection tracker for the Digimon Card Game. It is a static Angular app with no backend of its own: everything runs in the browser and the site is hosted on GitHub Pages.
 
-<h3 align="center">Digimon Card App</h3>
+**Live demo:** https://eddiericobom.github.io/Deckmon/
 
-  <p align="center">
-    Website for tracking your Digimon Card Game Collection, creating new Decks and sharing those with the community.
-    <br />
-    <br />
-    <a href="https://digimoncard.app">View the Site</a>
-    ·
-    <a href="https://github.com/TakaOtaku/Digimon-Card-App/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/TakaOtaku/Digimon-Card-App/issues">Request Feature</a>
-  </p>
-</div>
+## Features
 
+- **Card search**: filter the full card list by color, level, set, rarity, effect and more.
+- **Deck builder**: build, import, export and price-check decks, with a level curve and statistics.
+- **Collection tracker**: record owned cards and see set completion.
+- **3D holo card viewer**: tiltable card details, a deck carousel and a per-card 3D popup, with holo effects that depend on rarity.
+- **Playmat simulator (in progress)**: a playmat with serverless peer-to-peer PvP rooms. Rooms are named and can be protected with an optional password. A rules engine and a bot are planned.
 
+## Run locally
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
+Requirements: Node.js (LTS) and npm.
 
+```bash
+npm install --legacy-peer-deps
+npx ng serve
+```
 
+Open http://localhost:4200.
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+## Build for Pages
 
-Welcome to the Github-Repository of the website https://digimoncard.app
+```bash
+npm run build:pages
+```
 
-If you want to contribute please make a Pull-Request, I will then review it and approve or disapprove of the Pull-Request.
+This builds the production bundle with the `/Deckmon/` base href and writes the GitHub Pages files (client-only `index.html`, a `404.html` fallback and `.nojekyll`) to `dist/digimon-card-game-collector/browser`.
 
-If you find bugs or want some feature implemented, please write an Issue-Ticket for me.
+## Deploy
 
-Thank you for helping the website!
+Pushing to `main` runs `.github/workflows/pages.yml`, which builds the site and deploys it to GitHub Pages. In the repository settings, set **Pages > Build and deployment > Source** to **GitHub Actions**.
 
-If you do like the site, please help me maintain the server-costs and donate a bit, everything counts.
-<br>
-[PayPal Donation, Thank you!](https://www.paypal.com/donate/?hosted_button_id=DHQVT7GQ72J98)
+## Project structure
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+```
+src/
+  app/
+    features/     page-level features: cards, deckbuilder, collection, decks, home,
+                  profile, rules, products, price-compare, play (playmat + P2P rooms), shared UI
+    services/     API and data services, SEO, image and auth helpers
+    store/        Angular signal stores (cards, filters, saved decks, dialogs, prices)
+    functions/    filter, deck parsing and card helper functions
+  assets/
+    cardlists/    generated card data (JSON / TS)
+    images/       static images and icons
+  models/         interfaces and static data
+  environments/   build-time configuration
+public/           robots.txt, sitemap.xml, favicon
+scripts/          postbuild-pages.js (Pages build) and python/ (card data tooling)
+.github/workflows/pages.yml   GitHub Pages deployment
+```
 
+## Limitations
 
+- Community decks, login and cloud save depend on an external backend that does not allow requests from other origins. Those features are therefore unavailable in this fork.
+- Decks and the collection are stored in the browser (local storage). Clearing site data removes them, and they do not sync between devices.
 
-### Built With
+## Updating card data
 
-* [Angular](https://angular.io/)
-* [NGRX](https://ngrx.io/)
-* [PrimeNG](https://www.primefaces.org/primeng/)
-* [TailwindCSS](https://tailwindcss.com/)
-* [Firebase](https://firebase.google.com/)
+Card data is generated by the tools in `scripts/python` (wiki scraper, Cardmarket mapping and the card image sync described in `scripts/python/GarageSync.md`). The output goes to `src/assets/cardlists`. Rebuild and redeploy afterwards.
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+Card data is taken from the [DigimonCardGame Fandom wiki](https://digimoncardgame.fandom.com/), licensed CC BY-SA.
 
+## License
 
-
-<!-- GETTING STARTED -->
-## Getting Started
-
-To get a local copy up and running follow these simple example steps.
-
-### Installation
-
-1. Clone the repo
-   ```sh
-   git clone https://github.com/TakaOtaku/Digimon-Card-App.git
-   ```
-2. Install NPM packages
-   ```sh
-   npm install
-   ```
-3. Serve the project
-   ```sh
-   npm run start
-   ```
-4. See the site served on https://localhost:4200
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-<!-- CONTACT -->
-## Contact
-
-TakaOtaku - [@Discord](TakaOtaku#8538)
-
-Project Link: [https://github.com/TakaOtaku/Digimon-Card-App](https://github.com/TakaOtaku/Digimon-Card-App)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-* Tari for testing the website to the bone and filling hundreds of bug-reports
-* Credits for the Pre-Release Cards go to <a target="_blank" href="https://digimoncardgame.fandom.com/">https://digimoncardgame.fandom.com/</a> and all the wonderful people who maintain it!
-* Please support the official releases! Akiyoshi Hongo, Bandai, and Toei Animation respectively own Digimon images, copyrights and trademarks.</span>
-
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/TakaOtaku/Digimon-Card-App.svg?style=for-the-badge
-[contributors-url]: https://github.com/TakaOtaku/Digimon-Card-App/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/TakaOtaku/Digimon-Card-App.svg?style=for-the-badge
-[forks-url]: https://github.com/TakaOtaku/Digimon-Card-App/network/members
-[stars-shield]: https://img.shields.io/github/stars/TakaOtaku/Digimon-Card-App.svg?style=for-the-badge
-[stars-url]: https://github.com/TakaOtaku/Digimon-Card-App/stargazers
-[issues-shield]: https://img.shields.io/github/issues/TakaOtaku/Digimon-Card-App.svg?style=for-the-badge
-[issues-url]: https://github.com/TakaOtaku/Digimon-Card-App/issues
-[license-shield]: https://img.shields.io/github/license/TakaOtaku/Digimon-Card-App.svg?style=for-the-badge
-[license-url]: https://github.com/TakaOtaku/Digimon-Card-App/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/christian-bayer-987b76193
-[product-screenshot]: images/screenshot.png
+MIT, see license.txt

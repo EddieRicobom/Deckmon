@@ -203,7 +203,7 @@ export class DeckPageComponent {
   constructor() {
     effect(() => {
       const deck = this.deck();
-      if (!deck) return this.seo.set('Deck', 'A Digimon Card Game deck shared on digimoncard.app.');
+      if (!deck) return this.seo.set('Deck', 'A Digimon Card Game deck shared on Deckmon.');
       const title = deck.title || 'Untitled deck';
       const by = deck.user ? ` by ${deck.user}` : '';
       this.seo.set(`${title}${by}`, `${title}${by}: ${this.mainCount()} + ${this.eggCount()} card Digimon Card Game deck with level curve, price estimate and text list.`);

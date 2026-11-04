@@ -150,8 +150,6 @@ type AdminTab = 'users' | 'decks' | 'analytics';
               </tbody>
             </table>
           </div>
-          <a href="https://umami.takaotaku.de" target="_blank" rel="noopener"
-            class="mt-3 inline-block text-primary underline">Umami-Dashboard öffnen</a>
         }
       }
     </div>
