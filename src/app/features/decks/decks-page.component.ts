@@ -1,0 +1,216 @@
+import { SeoService } from '@services';
+import { NgFor, NgIf } from '@angular/common';
+import { ChangeDetectorRef, Component, effect, inject, OnInit } from '@angular/core';
+import { setDeckImage } from '@functions';
+import { emptyDeck, ICountCard, IDeck } from '@models';
+import { DialogStore, DigimonCardStore, SaveStore, WebsiteStore } from '@store';
+import { MessageService } from 'primeng/api';
+import { ButtonModule } from 'primeng/button';
+import { DialogModule } from 'primeng/dialog';
+import { OverlayZoneFixDirective } from '@directives';
+import { DividerModule } from 'primeng/divider';
+import { PaginatorModule } from 'primeng/paginator';
+import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { TooltipModule } from 'primeng/tooltip';
+import { Subject } from 'rxjs';
+import { DeckContainerComponent } from '../shared/deck-container.component';
+import { PageComponent } from '../shared/page.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { DeckFilterComponent } from '../shared/deck-filter.component';
+import { IDeckFilter } from '../../services/mongo-backend.service';
+import { DeckStatisticsComponent } from './components/deck-statistics.component';
+import { TierlistComponent } from './components/tierlist.component';
+
+@Component({
+  selector: 'digimon-decks-page',
+  template: `
+    <digimon-page #page>
+      <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 self-start px-4 py-6 md:px-6">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div class="flex flex-col gap-1">
+            <h1 class="m-0 text-3xl font-bold text-fg md:text-4xl">Community decks</h1>
+            <p class="m-0 text-sm text-muted">Search shared decks by name, player, card IDs or colors.</p>
+          </div>
+          <button
+            type="button"
+            (click)="deckStatsDialog = true; updateStatistics.next(true)"
+            class="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-ink-2 px-4 text-sm font-semibold text-fg hover:border-accent">
+            <i class="pi pi-chart-line"></i> Statistics
+          </button>
+        </div>
+
+        <!-- Deck Filter Component -->
+        <digimon-deck-filter
+          [filter]="websiteStore.decksFilter()"
+          (filterChange)="onFilterChange($event)">
+        </digimon-deck-filter>
+
+        <!-- Loading State -->
+        <div *ngIf="websiteStore.isLoadingDecks()" class="fixed inset-0 flex justify-center items-center bg-black bg-opacity-50 z-50">
+          <p-progressSpinner></p-progressSpinner>
+        </div>
+
+        <!-- Initial State - No Search Yet -->
+        <div *ngIf="!websiteStore.isLoadingDecks() && websiteStore.communityDecks().length === 0 && !hasSearched()" class="text-center py-12">
+          <div class="max-w-md mx-auto">
+            <i class="pi pi-search mb-4 text-5xl text-muted"></i>
+            <h3 class="mb-2 text-xl font-semibold text-fg">Search for decks</h3>
+            <p class="text-muted">Enter a search term above to browse community decks. Search by deck name, user, card IDs, or colors.</p>
+          </div>
+        </div>
+
+        <!-- Deck Results -->
+        <div *ngIf="!websiteStore.isLoadingDecks() && websiteStore.communityDecks().length > 0" class="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] sm:gap-3">
+          <digimon-deck-container
+            mode="Community"
+            *ngFor="let deck of websiteStore.communityDecks()"
+            (click)="showDeckDetails(deck)"
+            (contextmenu)="showDeckDetails(deck)"
+            [deck]="deck"></digimon-deck-container>
+        </div>
+
+        <!-- No Results After Search -->
+        <div *ngIf="!websiteStore.isLoadingDecks() && websiteStore.communityDecks().length === 0 && hasSearched()" class="text-center py-8">
+          <i class="pi pi-exclamation-triangle mb-4 text-4xl text-muted"></i>
+          <p class="text-fg">No decks found matching your search criteria.</p>
+          <p class="mt-2 text-sm text-muted">Try different keywords or clear your search to browse all decks.</p>
+        </div>
+
+        <!-- New Pagination Component -->
+        <digimon-pagination
+          *ngIf="!websiteStore.isLoadingDecks() && websiteStore.communityDecks().length > 0"
+          [pagination]="websiteStore.decksPagination()"
+          (pageChange)="onPageChange($event)">
+        </digimon-pagination>
+
+        <p-divider></p-divider>
+
+        <digimon-tierlist></digimon-tierlist>
+      </div>
+    </digimon-page>
+
+    <p-dialog
+      header="Deck statistics"
+      [(visible)]="deckStatsDialog"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      styleClass="w-[95vw] max-w-4xl"
+      [baseZIndex]="10000">
+      <div *ngIf="loading2" class="fixed inset-0 flex justify-center items-center bg-black bg-opacity-50 z-50">
+        <p-progressSpinner></p-progressSpinner>
+      </div>
+      <digimon-deck-statistics [decks]="filteredDecks" [updateCards]="updateStatistics" [(loading)]="loading2"></digimon-deck-statistics>
+    </p-dialog>
+  `,
+  standalone: true,
+  imports: [
+    ButtonModule,
+    NgFor,
+    DeckContainerComponent,
+    PaginatorModule,
+    DialogModule,
+    DeckStatisticsComponent,
+    NgIf,
+    ProgressSpinnerModule,
+    TierlistComponent,
+    DividerModule,
+    PageComponent,
+    TooltipModule,
+    PaginationComponent,
+    DeckFilterComponent,
+    OverlayZoneFixDirective,
+  ],
+  providers: [],
+})
+export class DecksPageComponent implements OnInit {
+  private seo = inject(SeoService);
+  saveStore = inject(SaveStore);
+  dialogStore = inject(DialogStore);
+  websiteStore = inject(WebsiteStore);
+  selectedDeck: IDeck = emptyDeck;
+  deckDialog = false;
+  deckStatsDialog = false;
+  updateStatistics = new Subject<boolean>();
+  decks: IDeck[] = [];
+  filteredDecks: IDeck[] = [];
+  collection: ICountCard[];
+  loading2 = false;
+  private searchPerformed = false;
+  private messageService = inject(MessageService);
+  private digimonCardStore = inject(DigimonCardStore);
+
+  constructor(private changeDetection: ChangeDetectorRef) {
+    // Don't load decks automatically - wait for user to search
+
+    effect(() => {
+      const decks = this.websiteStore.communityDecks();
+
+      // Store current decks for collection filtering
+      this.decks = decks;
+      this.filteredDecks = decks;
+      this.collection = this.saveStore.collection();
+
+      this.changeDetection.detectChanges();
+    });
+  }
+
+  ngOnInit(): void {
+    this.makeGoogleFriendly();
+  }
+
+  showDeckDetails(deck: IDeck) {
+    this.dialogStore.updateDeckDialog({
+      show: true,
+      editable: false,
+      deck,
+    });
+    this.selectedDeck = deck;
+    this.deckDialog = true;
+  }
+
+  applyCollectionFilter() {
+    this.loading2 = true;
+
+    const collectionCounts: { [cardId: string]: number } = {};
+
+    // Populate the collectionCounts map
+    this.collection.forEach((card) => {
+      const cardId = card.id.split('_', 1)[0];
+      collectionCounts[cardId] = (collectionCounts[cardId] || 0) + card.count;
+    });
+
+    // Filter current decks based on collection
+    const possibleDecks = this.filteredDecks.filter((deck) => {
+      return deck.cards.every((cardNeededForDeck) => {
+        const totalCount = collectionCounts[cardNeededForDeck.id.split('_', 1)[0]] || 0;
+        return totalCount >= cardNeededForDeck.count;
+      });
+    });
+
+    // Update the filtered decks display
+    this.filteredDecks = possibleDecks;
+
+    this.messageService.add({ severity: 'success', summary: 'Success', detail: 'Filtered for Decks possible with your cards' });
+
+    this.loading2 = false;
+  }
+
+  // Filter and pagination methods
+  onFilterChange(filter: IDeckFilter) {
+    this.searchPerformed = true;
+    this.websiteStore.loadCommunityDecksWithFilter(filter);
+  }
+
+  onPageChange(page: number) {
+    this.websiteStore.loadDecksPage(page);
+  }
+
+  hasSearched(): boolean {
+    return this.searchPerformed;
+  }
+
+  private makeGoogleFriendly() {
+    this.seo.set('Community decks and tier list', 'Browse Digimon Card Game community decks, the archetype tier list and the most played cards in the meta.');
+  }
+}

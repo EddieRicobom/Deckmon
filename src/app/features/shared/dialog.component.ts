@@ -1,0 +1,151 @@
+import { Component, computed, inject } from '@angular/core';
+import { DialogModule } from 'primeng/dialog';
+import { ChangelogDialogComponent } from './dialogs/changelog-dialog.component';
+import { DeckDialogComponent } from './dialogs/deck-dialog.component';
+import { ExportDeckDialogComponent } from './dialogs/export-deck-dialog.component';
+import { SettingsDialogComponent } from './dialogs/settings-dialog/settings-dialog.component';
+import { ViewCardDialogComponent } from './dialogs/view-card-dialog.component';
+import { DialogStore } from '../../store/dialog.store';
+
+@Component({
+  selector: 'digimon-dialog',
+  template: `
+    <p-dialog
+      header="Deck"
+      [visible]="deckDialog()"
+      (visibleChange)="$event || closeDeckDialog()"
+      (onHide)="closeDeckDialog()"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      styleClass="w-[95vw] max-w-5xl"
+      [baseZIndex]="10000">
+      <digimon-deck-dialog></digimon-deck-dialog>
+    </p-dialog>
+
+    <p-dialog
+      header="Export Deck"
+      [visible]="exportDeckDialog()"
+      (visibleChange)="$event || closeExportDeckDialog()"
+      (onHide)="closeExportDeckDialog()"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      header="Export deck"
+      styleClass="w-[95vw] max-w-3xl"
+      [baseZIndex]="10000">
+      <digimon-export-deck-dialog></digimon-export-deck-dialog>
+    </p-dialog>
+
+    <p-dialog
+      [visible]="settingsDialog()"
+      (visibleChange)="$event || closeSettingsDialog()"
+      (onHide)="closeSettingsDialog()"
+      [baseZIndex]="10000"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      header="Settings"
+      styleClass="background-darker surface-ground w-full h-full max-w-6xl min-h-[500px] p-5">
+      <digimon-settings-dialog></digimon-settings-dialog>
+    </p-dialog>
+
+    <p-dialog
+      [visible]="viewCardDialog()"
+      (visibleChange)="$event || closeViewCardDialog()"
+      (onHide)="closeViewCardDialog()"
+      [showHeader]="false"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      styleClass="overflow-x-hidden border-none p-3 m-2">
+      <digimon-view-card-dialog></digimon-view-card-dialog>
+    </p-dialog>
+
+    <p-dialog
+      [visible]="changelogDialog()"
+      (visibleChange)="$event || closeChangelogDialog()"
+      (onHide)="closeChangelogDialog()"
+      header="What's new"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      styleClass="w-[95vw] max-w-3xl">
+      <digimon-changelog-dialog></digimon-changelog-dialog>
+    </p-dialog>
+
+    <p-dialog
+      header="Support digimoncard.app"
+      [visible]="supportDialog()"
+      (visibleChange)="$event || closeSupportDialog()"
+      (onHide)="closeSupportDialog()"
+      [modal]="true"
+      [dismissableMask]="true"
+      [resizable]="false"
+      styleClass="w-[95vw] max-w-md">
+      <div class="flex flex-col gap-4 text-fg">
+        <p class="m-0 leading-relaxed">
+          digimoncard.app is free, has no ads and is built in my spare time. Hosting, the card image storage and the database are paid out of
+          pocket, so every coffee helps keep it running and growing.
+        </p>
+        <a
+          href="https://ko-fi.com/takaotaku"
+          target="_blank"
+          rel="noopener"
+          class="flex h-12 items-center justify-center gap-2 rounded-lg bg-accent font-semibold text-accent-ink no-underline">
+          <i class="pi pi-heart-fill"></i> Support on Ko-fi
+        </a>
+        <a
+          href="https://www.paypal.com/donate/?hosted_button_id=WLM58Q785D4H4"
+          target="_blank"
+          rel="noopener"
+          class="flex h-11 items-center justify-center gap-2 rounded-lg border border-line bg-ink-2 font-semibold text-fg no-underline hover:border-accent">
+          <i class="pi pi-paypal"></i> Donate with PayPal
+        </a>
+        <p class="m-0 text-sm text-muted">
+          Can't donate? Sharing your decks, reporting bugs on Discord or contributing on GitHub helps just as much.
+        </p>
+      </div>
+    </p-dialog>
+  `,
+  standalone: true,
+  //changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    DialogModule,
+    ChangelogDialogComponent,
+    SettingsDialogComponent,
+    ViewCardDialogComponent,
+    ExportDeckDialogComponent,
+    DeckDialogComponent,
+  ],
+})
+export class DialogComponent {
+  dialogStore = inject(DialogStore);
+
+  // PrimeNG 21 closes on mask click outside the Angular zone; signal-driven visibility still re-renders.
+  settingsDialog = computed(() => this.dialogStore.settings());
+  viewCardDialog = computed(() => this.dialogStore.viewCard().show);
+  exportDeckDialog = computed(() => this.dialogStore.exportDeck().show);
+  deckDialog = computed(() => this.dialogStore.deck().show);
+  changelogDialog = computed(() => this.dialogStore.changelog());
+  supportDialog = computed(() => this.dialogStore.support());
+
+  closeSettingsDialog() {
+    this.dialogStore.updateSettingsDialog(false);
+  }
+  closeViewCardDialog() {
+    this.dialogStore.showViewCardDialog(false);
+  }
+  closeExportDeckDialog() {
+    this.dialogStore.showExportDeckDialog(false);
+  }
+  closeDeckDialog() {
+    this.dialogStore.showDeckDialog(false);
+  }
+  closeChangelogDialog() {
+    this.dialogStore.updateChangelogDialog(false);
+  }
+  closeSupportDialog() {
+    this.dialogStore.updateSupportDialog(false);
+  }
+}

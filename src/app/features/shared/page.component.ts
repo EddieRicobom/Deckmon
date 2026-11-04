@@ -1,0 +1,28 @@
+import { NgClass } from '@angular/common';
+import { Component, ElementRef, Input, ViewChild } from '@angular/core';
+import { BlockableUI } from 'primeng/api';
+
+@Component({
+  selector: 'digimon-page',
+  template: `
+    <div
+      #content
+      ngClass="{{ flex === 'row' ? 'flex-row' : 'flex-col' }}"
+      class="overflow-y-auto overflow-x-hidden
+      flex items-center justify-center relative
+      h-[calc(var(--app-vh)-7.5rem)] md:h-[calc(var(--app-vh)-5rem)]
+      w-screen">
+      <ng-content></ng-content>
+    </div>
+  `,
+  standalone: true,
+  imports: [NgClass],
+})
+export class PageComponent implements BlockableUI {
+  @Input() flex = 'row';
+  @ViewChild('content') content!: ElementRef;
+
+  getBlockableElement(): HTMLElement {
+    return this.content?.nativeElement;
+  }
+}

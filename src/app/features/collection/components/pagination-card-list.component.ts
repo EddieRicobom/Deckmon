@@ -1,0 +1,198 @@
+import { NgClass, NgIf } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, effect, EventEmitter, inject, Input, Output } from '@angular/core';
+import { FormControl } from '@angular/forms';
+import { DataViewModule } from 'primeng/dataview';
+import { DialogModule } from 'primeng/dialog';
+import { DragDropModule } from 'primeng/dragdrop';
+import { DrawerModule } from 'primeng/drawer';
+import { SkeletonModule } from 'primeng/skeleton';
+import { DigimonCard, DRAG, dummyCard, ICountCard, IDraggedCard, PriceMetric } from '@models';
+import { IntersectionListenerDirective, OverlayZoneFixDirective } from '@directives';
+import { filterCards, withoutJ } from '@functions';
+import { DialogStore } from '@store';
+import { DigimonCardStore } from '@store';
+import { SaveStore } from '@store';
+import { WebsiteStore } from '@store';
+import { FilterSideBoxComponent } from '../../shared/filter/filter-side-box.component';
+import { FullCardComponent } from '../../shared/full-card.component';
+import { PaginationCardListHeaderComponent } from './pagination-card-list-header.component';
+import { SearchComponent } from './search.component';
+import { FilterStore } from '@store';
+import { AdvancedSearchService } from '../../../services/advanced-search.service';
+import { CardMarketService } from '../../../services/card-market.service';
+
+@Component({
+  selector: 'digimon-pagination-card-list',
+  template: `
+    <div class="flex flex-col w-full">
+      <digimon-pagination-card-list-header
+        [filterButton]="!showFilterBox()"
+        (filterBox)="filterBox = $event"
+        [widthForm]="widthForm"
+        [viewOnly]="inputCollection.length > 0"
+        [showCollectionMode]="showCollectionMode">
+        <ng-content select="[headerStart]" ngProjectAs="[headerStart]"></ng-content>
+        <ng-content select="[headerEnd]" ngProjectAs="[headerEnd]"></ng-content>
+      </digimon-pagination-card-list-header>
+
+      <digimon-search></digimon-search>
+
+      <div
+        [pDroppable]="['fromDeck', 'fromSide']"
+        (onDrop)="drop(draggedCard(), draggedCard())"
+        role="list"
+        aria-live="polite"
+        aria-label="Card search results"
+        [ngClass]="{ 'pb-16 lg:pb-0': bottomInset }"
+        class="min-h-0 flex-1 flex flex-wrap w-full content-start justify-start overflow-y-scroll">
+        <ng-content></ng-content>
+        @for (card of showCards; track $index) {
+          @defer (on viewport) {
+            <digimon-full-card
+              [style]="{ width: widthForm.value + 'rem' }"
+              class="m-0.5 md:m-1 flex items-center justify-center self-start"
+              [card]="card"
+              [count]="getCount(card.id)"
+              [deckBuilder]="true"
+              [collectionOnly]="collectionOnly"
+              [onlyView]="inputCollection.length > 0"
+              [showCollection]="showCollectionMode"
+              [alwaysCollection]="alwaysCollection"
+              (viewCard)="viewCard($event)"></digimon-full-card>
+            <div *ngIf="$index + 1 === showCards.length" (digimonIntersectionListener)="loadItems()" class="sm:m-0.5 md:m-1"></div>
+          } @placeholder {
+            <p-skeleton class="sm:m-0.5 md:m-1" width="5.6rem" height="10rem"></p-skeleton>
+          }
+        } @empty {
+          <div *ngIf="filteredCards().length === 0 && digimonCardStore.cards().length > 0" class="flex items-center justify-center w-full h-full">
+            <h1 class="primary-color text-bold text-5xl text-center">No cards found!</h1>
+          </div>
+        }
+      </div>
+    </div>
+
+    <digimon-filter-side-box *ngIf="showFilterBox()" class="hidden xl:flex"></digimon-filter-side-box>
+
+    <p-drawer
+      [(visible)]="filterBox"
+      dismissible="false"
+      position="right"
+      styleClass="w-[20rem] md:w-[24rem] overflow-x-hidden overflow-y-auto p-0 border-none">
+      <digimon-filter-side-box></digimon-filter-side-box>
+    </p-drawer>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [
+    NgClass,
+    PaginationCardListHeaderComponent,
+    SearchComponent,
+    NgIf,
+    DragDropModule,
+    FullCardComponent,
+    DialogModule,
+    FilterSideBoxComponent,
+    DrawerModule,
+    DataViewModule,
+    SkeletonModule,
+    IntersectionListenerDirective,
+    OverlayZoneFixDirective,
+  ],
+})
+export class PaginationCardListComponent {
+  @Input() collectionOnly: boolean = false;
+  @Input() initialWidth = 5.6;
+  @Input() inputCollection: ICountCard[] = [];
+  @Input() dialogOnView = true;
+  @Input() showCollectionMode = true;
+  @Input() alwaysCollection = false;
+  // Leaves room for the builder's mobile Pool/Deck/Stats tray
+  @Input() bottomInset = false;
+  @Output() cardViewed = new EventEmitter<DigimonCard>();
+
+  digimonCardStore = inject(DigimonCardStore);
+  websiteStore = inject(WebsiteStore);
+  saveStore = inject(SaveStore);
+  dialogStore = inject(DialogStore);
+  filterStore = inject(FilterStore);
+  advancedSearchService = inject(AdvancedSearchService);
+  private cardMarketService = inject(CardMarketService);
+
+  draggedCard = this.websiteStore.draggedCard;
+  collection = this.saveStore.collection;
+
+  widthForm = new FormControl(this.initialWidth);
+
+  filterBox = false;
+  // false: filters only open in the drawer (the builder needs the width)
+  @Input() filterBoxEnabled = true;
+  // 'Filter panel beside cards' setting (unset counts as on)
+  showFilterBox = computed(() => this.filterBoxEnabled && this.saveStore.settings().fullscreenFilter !== false);
+  card = JSON.parse(JSON.stringify(dummyCard));
+
+  perPage = 100;
+  page = 1;
+  filteredCards = this.digimonCardStore.filteredCards;
+  showCards: DigimonCard[] = [];
+
+  onFilterChange = effect(() => {
+    if (this.inputCollection.length === 0) return;
+    const cards = this.digimonCardStore.cards();
+
+    if (cards.length === 0) return;
+
+    const filteredCards = filterCards(
+      this.digimonCardStore.cards(),
+      { ...this.saveStore.save(), collection: this.inputCollection },
+      this.filterStore.filter(),
+      this.websiteStore.sort(),
+      this.digimonCardStore.cardsMap(),
+      this.filterStore.advancedSearch(),
+      this.advancedSearchService,
+      (cardId) => this.cardMarketService.getPrice(cardId, (this.saveStore.settings().priceMetric as PriceMetric) || PriceMetric.Trend),
+    );
+
+    this.digimonCardStore.updateFilteredCards(filteredCards);
+  });
+
+  constructor() {
+    effect(() => {
+      const filteredCards = this.digimonCardStore.filteredCards();
+      this.showCards = filteredCards.slice(0, this.perPage);
+      this.page = 1;
+    });
+  }
+
+  getCount(cardId: string): number {
+    if (this.inputCollection.length === 0) {
+      return this.collection().find((value) => value.id === withoutJ(cardId))?.count ?? 0;
+    }
+    return this.inputCollection.find((value) => value.id === withoutJ(cardId))?.count ?? 0;
+  }
+
+  viewCard(card: DigimonCard) {
+    this.cardViewed.emit(card);
+    if (!this.dialogOnView) return;
+    this.dialogStore.updateViewCardDialog({
+      show: true,
+      card,
+      width: '50vw',
+    });
+  }
+
+  drop(card: IDraggedCard, dragCard: IDraggedCard) {
+    if (dragCard.drag === DRAG.Side) {
+      this.websiteStore.removeCardFromSideDeck(card.card.id);
+      return;
+    }
+    this.websiteStore.removeCardFromDeck(card.card.id);
+  }
+
+  loadItems() {
+    const from = this.page * this.perPage;
+    const to = (this.page + 1) * this.perPage;
+    const newCards = this.filteredCards().slice(from, to);
+    this.showCards.push(...newCards);
+    this.page = this.page + 1;
+  }
+}

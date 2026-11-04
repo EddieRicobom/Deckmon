@@ -1,0 +1,281 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { Injectable, Signal, signal } from '@angular/core';
+import { Auth, GoogleAuthProvider, signInWithPopup, signOut, user, User } from '@angular/fire/auth';
+// Imported from firebase/auth directly: AngularFire's zone wrapper wraps the persistence class, which breaks it.
+import { browserLocalPersistence, setPersistence } from 'firebase/auth';
+import { emptySave, emptySettings, ISave, IUser } from '@models';
+import { MessageService } from 'primeng/api';
+import { catchError, filter, Observable, of, ReplaySubject, retry, switchMap, take, tap, throwError, timer } from 'rxjs';
+import { MongoBackendService } from './mongo-backend.service';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class AuthService {
+  private userSignal = signal<IUser | null>(null);
+  private authStateResolved$ = new ReplaySubject<boolean>(1);
+  // Use the user observable from the injected AngularFire Auth service
+  firebaseUser$: Observable<User | null>;
+
+  constructor(
+    private firebaseAuth: Auth, // AngularFire Auth service is injected here
+    private mongoBackendService: MongoBackendService,
+    private messageService: MessageService,
+  ) {
+    // Set persistence - use local so auth survives tab/browser close
+    setPersistence(this.firebaseAuth, browserLocalPersistence);
+
+    // Use the user observable provided by the injected AngularFire Auth service
+    this.firebaseUser$ = user(this.firebaseAuth);
+
+    // Initialize auth state handling
+    this.initAuthState();
+  }
+
+  get isLoggedIn(): boolean {
+    return this.userSignal() !== null;
+  }
+
+  get currentUser(): Signal<IUser | null> {
+    return this.userSignal;
+  }
+
+  /** Emits once after the initial auth state has been resolved. */
+  get authReady$(): Observable<boolean> {
+    return this.authStateResolved$.pipe(filter(Boolean), take(1));
+  }
+
+  /**
+   * Initialize the authentication state handling
+   */
+  private initAuthState(): void {
+    this.firebaseUser$ // Now using the AngularFire user observable
+      .pipe(
+        switchMap((firebaseUser) => {
+          if (!firebaseUser) {
+            // User is logged out, clear state
+            this.userSignal.set(null);
+            this.authStateResolved$.next(true);
+            return of(null);
+          }
+
+          // User is logged in, get save from backend
+          return this.mongoBackendService.getSave(firebaseUser.uid).pipe(
+            // Transient backend/network hiccups happen occasionally in production.
+            // Retry with exponential backoff so a temporary blip doesn't look like a
+            // failed login. Never retry a genuine 404 (user simply has no save yet).
+            retry({
+              count: 4,
+              delay: (error, retryCount) => {
+                if ((error as HttpErrorResponse)?.status === 404) {
+                  return throwError(() => error);
+                }
+                return timer(Math.min(1000 * 2 ** (retryCount - 1), 8000));
+              },
+            }),
+            catchError((error) => {
+              // First-time login: the user has no backend save yet (404).
+              // Create a new save so the account is initialized and the user can log in.
+              if ((error as HttpErrorResponse)?.status === 404) {
+                const newSave = this.createNewSave(firebaseUser, this.getLocalStorageSave());
+                return of({ ...newSave, _isNew: true } as ISave & { _isNew?: boolean });
+              }
+              // Fetch failed after retries — use local cache if available, but do NOT push to backend
+              const localSave = this.getLocalStorageSave();
+              if (localSave && localSave.uid === firebaseUser.uid) {
+                return of({ ...localSave, _fetchFailed: true } as ISave & { _fetchFailed?: boolean });
+              }
+              // No local save either — return null to indicate we couldn't load
+              return of(null);
+            }),
+            tap((save) => {
+              const isNew = save && '_isNew' in save && (save as any)._isNew;
+
+              if (save) {
+                // Create user data object and update state
+                const displayName = save.displayName ? save.displayName : firebaseUser.displayName;
+                const photoUrl = save.photoUrl ? save.photoUrl : firebaseUser.photoURL;
+                const cleanSave = { ...save } as any;
+                delete cleanSave._fetchFailed;
+                delete cleanSave._isNew;
+
+                const userData: IUser = {
+                  uid: firebaseUser.uid,
+                  displayName: displayName,
+                  photoUrl: photoUrl,
+                  save: this.ensureSaveHasUserInfo(cleanSave, firebaseUser),
+                };
+
+                // Update local storage and state
+                localStorage.setItem('user', JSON.stringify(userData));
+                this.userSignal.set(userData);
+
+                // Only write to the backend when creating a brand-new account (first login).
+                // We never re-push an existing user's save on login, so a transient or partial
+                // load can never overwrite their stored collection/decks/settings.
+                if (isNew) {
+                  this.mongoBackendService.updateSave(userData.save).subscribe({ error: () => {} });
+                }
+              } else {
+                // Could not load save from backend or local — show error, don't create empty save
+                console.warn('Could not load user save from backend or local storage.');
+                this.messageService.add({
+                  severity: 'warn',
+                  summary: 'Could not load profile',
+                  detail: 'Your profile data could not be loaded. Please try refreshing.',
+                });
+              }
+              this.authStateResolved$.next(true);
+            }),
+            catchError((err) => {
+              console.error('Error loading user save:', err);
+              this.authStateResolved$.next(true);
+              return of(null);
+            }),
+          );
+        }),
+        catchError((err) => {
+          console.error('Auth state error:', err);
+          this.userSignal.set(null);
+          this.authStateResolved$.next(true);
+          return of(null);
+        }),
+      )
+      .subscribe({
+        error: (err) => {
+          console.error('Auth subscription error:', err);
+          this.authStateResolved$.next(true);
+        },
+      });
+  }
+
+  /**
+   * Sign in with Google
+   */
+  async googleAuth(): Promise<any> {
+    try {
+      const provider = new GoogleAuthProvider();
+
+      provider.setCustomParameters({
+        prompt: 'select_account',
+      });
+
+      const result = await signInWithPopup(this.firebaseAuth, provider);
+
+      this.messageService.add({
+        severity: 'success',
+        summary: 'Login Successful!',
+        detail: 'You have been logged in with Google!',
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Google Auth Error:', error);
+
+      // More specific error handling
+      let errorMessage = 'Could not log in with Google';
+      // Check if it's a known Firebase error structure
+      if (error && typeof error === 'object' && 'code' in error && 'message' in error) {
+        errorMessage = `Authentication failed: ${error.message} (${error.code})`;
+      } else if (error instanceof Error) {
+        errorMessage = `Authentication failed: ${error.message}`;
+      }
+
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Login Failed',
+        detail: errorMessage,
+      });
+
+      // Re-throw the error so the caller can handle it if needed
+      throw error;
+    }
+  }
+
+  /**
+   * Sign out
+   */
+  async logOut(): Promise<void> {
+    try {
+      await signOut(this.firebaseAuth);
+      this.messageService.add({
+        severity: 'success',
+        summary: 'Logout Successful!',
+        detail: 'You have been logged out!',
+      });
+
+      this.userSignal.set(null);
+    } catch (error) {
+      console.error('Logout Error:', error);
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Logout Failed',
+        detail: 'Could not log out',
+      });
+    }
+  }
+
+  /**
+   * Load the current save - used on application init
+   */
+  loadSave(): Observable<ISave> {
+    if (this.currentUser()) {
+      // User is logged in, get save from backend
+      return this.mongoBackendService.getSave(this.currentUser().uid).pipe(
+        catchError(() => {
+          return of(this.getLocalStorageSave() || emptySave);
+        }),
+      );
+    }
+
+    // No user logged in, use local save
+    return of(this.getLocalStorageSave() || emptySave);
+  }
+
+  /**
+   * Get save from local storage
+   */
+  getLocalStorageSave(): ISave | null {
+    const localStorageItem = localStorage.getItem('Digimon-Card-Collector');
+    if (!localStorageItem) return null;
+
+    try {
+      const localSave = JSON.parse(localStorageItem);
+      return this.mongoBackendService.checkSaveValidity(localSave);
+    } catch (e) {
+      console.error('Error parsing local save:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Create a new save object for a user
+   */
+  private createNewSave(user: User, existingSave: ISave | null): ISave {
+    if (existingSave) {
+      return this.ensureSaveHasUserInfo(existingSave, user);
+    }
+
+    return {
+      uid: user.uid,
+      photoUrl: user.photoURL || '', // Firebase user still has photoURL
+      displayName: user.displayName || '',
+      version: 1,
+      collection: [],
+      decks: [],
+      settings: emptySettings,
+    };
+  }
+
+  /**
+   * Ensure save has user information
+   */
+  private ensureSaveHasUserInfo(save: ISave, user: User): ISave {
+    return {
+      ...save,
+      uid: user.uid,
+      displayName: save.displayName || user.displayName || '',
+      photoUrl: save.photoUrl || user.photoURL || '', // Firebase user has photoURL, save has photoUrl
+    };
+  }
+}

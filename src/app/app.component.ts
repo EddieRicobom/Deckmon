@@ -1,0 +1,223 @@
+import { ChangeDetectionStrategy, Component, effect, inject, PLATFORM_ID, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { RouterOutlet } from '@angular/router';
+import { filterCards } from '@functions';
+import { AdvancedSearchService } from './services/advanced-search.service';
+import { CardMarketService } from './services/card-market.service';
+import { CARDSET, emptyFilter, emptySave, IFilter, ISettings, PriceMetric } from '@models';
+import { AuthService, MongoBackendService, SeoService } from '@services';
+import { DigimonCardStore, FilterStore, SaveStore, WebsiteStore } from '@store';
+import { BlockUIModule } from 'primeng/blockui';
+import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { DrawerModule } from 'primeng/drawer';
+import { OverlayZoneFixDirective } from '@directives';
+import { ToastModule } from 'primeng/toast';
+import { first } from 'rxjs';
+import { DialogComponent } from './features/shared/dialog.component';
+import { NavLinksComponent } from './features/shared/navbar/nav-links.component';
+import { NavbarComponent } from './features/shared/navbar/navbar.component';
+
+@Component({
+  selector: 'digimon-root',
+  template: `
+    <div class="flex flex-col">
+      <digimon-navbar (openSideNav)="sideNav = true"></digimon-navbar>
+
+      @if (saveLoaded()) {
+        <div
+          class="min-h-[calc(var(--app-vh)-3.5rem)] md:min-h-[calc(var(--app-vh)-5rem)] w-[100vw] pb-16 md:pb-0
+        flex justify-center items-center">
+          <router-outlet></router-outlet>
+        </div>
+      } @else {
+        <div class="h-[calc(var(--app-vh)-58px)] w-screen"></div>
+        <p-blockUI [blocked]="!saveLoaded()"></p-blockUI>
+        <p-progressSpinner class="absolute left-1/2 top-1/2 z-[5000] -translate-x-1/2 -translate-y-1/2 transform"></p-progressSpinner>
+      }
+
+      <digimon-dialog></digimon-dialog>
+
+      <p-drawer [(visible)]="sideNav" position="bottom" header="Menu" styleClass="!h-auto max-h-[85vh] rounded-t-2xl border-t border-line px-4 pt-2">
+        <digimon-nav-links [sidebar]="true" (done)="sideNav = false"></digimon-nav-links>
+      </p-drawer>
+
+      <p-toast></p-toast>
+    </div>
+  `,
+  standalone: true,
+  styleUrls: ['./app.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    NavbarComponent,
+    RouterOutlet,
+    BlockUIModule,
+    ProgressSpinnerModule,
+    DrawerModule,
+    NavLinksComponent,
+    ToastModule,
+    DialogComponent,
+    OverlayZoneFixDirective,
+  ],
+})
+export class AppComponent {
+  digimonCardStore = inject(DigimonCardStore);
+  saveStore = inject(SaveStore);
+  filterStore = inject(FilterStore);
+  websiteStore = inject(WebsiteStore);
+
+  authService = inject(AuthService);
+  backendService = inject(MongoBackendService);
+  // Starts canonical / og:url tracking from the first navigation
+  private seo = inject(SeoService);
+  advancedSearchService = inject(AdvancedSearchService);
+  private cardMarketService = inject(CardMarketService);
+
+  // Prerendering runs without a browser: no save, storage or price data, just the public page
+  private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  saveLoaded = signal(!this.isBrowser);
+
+  sideNav = false;
+
+  cardSet = '';
+  settings: ISettings | null = null;
+
+  onAuthChange = effect(() => {
+    if (!this.isBrowser) return;
+    if (this.authService.isLoggedIn) {
+      this.saveStore.updateSave(this.authService.currentUser().save);
+    } else {
+      this.saveStore.updateSave(this.authService.getLocalStorageSave() || emptySave);
+    }
+  });
+
+  constructor() {
+    if (!this.isBrowser) return;
+
+    // Check if a save is in local storage from a previous login
+    // If this is the case, set the save
+    this.saveStore.loadSave();
+
+    // Load price guide data into website store for dialog components
+    this.cardMarketService.getPrizeGuide().pipe(first()).subscribe((priceGuide) => {
+      this.websiteStore.updatePriceGuideCM(priceGuide);
+    });
+
+    effect(() => {
+      this.saveLoaded.set(this.saveStore.save().uid !== '' || this.saveStore.loadedSave());
+
+      if (!this.saveStore.loadedSave()) return;
+
+      this.updateDatabase();
+
+      if (this.settings === null || this.settings !== this.saveStore.settings()) {
+        this.setAdvancedSettings();
+        this.settings = this.saveStore.settings();
+      }
+
+      if (this.cardSet !== this.saveStore.settings().cardSet) {
+        this.cardSet = this.saveStore.settings().cardSet;
+        this.setDigimonCardSet();
+      }
+    });
+
+    effect(() => {
+      const cards = this.digimonCardStore.cards();
+
+      if (cards.length === 0) return;
+
+      const filteredCards = filterCards(
+        this.digimonCardStore.cards(),
+        this.saveStore.save(),
+        this.filterStore.filter(),
+        this.websiteStore.sort(),
+        this.digimonCardStore.cardsMap(),
+        this.filterStore.advancedSearch(),
+        this.advancedSearchService,
+        (cardId) => this.cardMarketService.getPrice(cardId, (this.saveStore.settings().priceMetric as PriceMetric) || PriceMetric.Trend),
+      );
+
+      this.digimonCardStore.updateFilteredCards(filteredCards);
+    });
+
+    // Prevent Right Click, that is used for other actions
+    document.addEventListener(
+      'contextmenu',
+      function (e) {
+        e.preventDefault();
+      },
+      false,
+    );
+  }
+
+  private updateDatabase(): void {
+    const save = this.saveStore.save();
+    // Always keep a local copy so decks survive offline / backend outages
+    try {
+      localStorage.setItem('Digimon-Card-Collector', JSON.stringify(save));
+    } catch (e) {
+      console.warn('Could not write save to localStorage', e);
+    }
+    if (this.authService.isLoggedIn) {
+      this.backendService
+        .updateSave(save)
+        .pipe(first())
+        .subscribe({ error: (err) => console.warn('Backend save failed, kept locally', err) });
+    }
+  }
+
+  private setAdvancedSettings(): void {
+    const settings = this.saveStore.settings();
+
+    if (
+      settings.showPreRelease === undefined ||
+      settings.showAACards === undefined ||
+      settings.showStampedCards === undefined ||
+      settings.showReprintCards === undefined ||
+      settings.showSpecialRareCards === undefined ||
+      settings.showRarePullCards === undefined
+    ) {
+      return;
+    }
+
+    const CARD_VERSION_MAPPING = {
+      showNormalCards: 'Normal',
+      showAACards: 'Alternative Art',
+      showFoilCards: 'Foil',
+      showTexturedCards: 'Textured',
+      showPreRelease: 'Release',
+      showBoxTopper: 'Box Topper',
+      showFullArtCards: 'Full Art',
+      showStampedCards: 'Stamp',
+      showSpecialRareCards: 'Special Rare',
+      showRarePullCards: 'Rare Pull',
+    };
+
+    const ALL_CARD_VERSIONS = Object.values(CARD_VERSION_MAPPING);
+
+    let filter: IFilter = this.filterStore.filter();
+
+    let newVersionFilter: string[] = [...ALL_CARD_VERSIONS];
+
+    for (const [settingKey, cardVersion] of Object.entries(CARD_VERSION_MAPPING)) {
+      // Cast to keyof ISettings for type safety
+      const key = settingKey as keyof ISettings;
+      if (!settings[key]) {
+        // If the setting is false (e.g., !settings.showFoilCards) filter out the card version
+        newVersionFilter = newVersionFilter.filter((v) => v !== cardVersion);
+      }
+    }
+
+    filter = { ...filter, versionFilter: newVersionFilter };
+
+    this.filterStore.updateFilter(filter);
+  }
+
+  private setDigimonCardSet(): void {
+    const cardSet = this.saveStore.settings().cardSet;
+    if (cardSet === undefined) {
+      return;
+    }
+
+    this.digimonCardStore.updateCards(cardSet as CARDSET).catch((error) => console.error('Loading the card list failed:', error));
+  }
+}

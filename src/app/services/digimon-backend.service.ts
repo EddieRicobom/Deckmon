@@ -1,0 +1,294 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { first, map, Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
+import { DigimonCard, IColor, ICountCard, IDeck, ISave, ISettings, ITournamentDeck, IUser } from '@models';
+import { CARDSET, IBlog, IBlogWithText, ITag } from '@models';
+import { sortByReleaseOrder } from '@models';
+import { emptySettings } from '@models';
+import { IUserAndDecks } from '@models';
+import { checkDeckErrors, setDeckImage } from '@functions';
+
+const baseUrl = environment.legacyApiBaseUrl;
+
+@Injectable({
+  providedIn: 'root',
+})
+/**
+ * @deprecated Use {@link MongoBackendService} instead. This service targets the
+ * legacy MySQL backend and is kept only for data migration via MigrationService.
+ * Do not add new call sites — it will be removed once migration is complete.
+ */
+export class DigimonBackendService {
+  constructor(private http: HttpClient) { }
+
+  /**
+   * Safely parse a backend field that may be a JSON string, an already-parsed
+   * object/array (Sequelize JSON columns), null, or malformed. Returns the
+   * provided fallback instead of throwing, so a single bad field can never
+   * break loading the whole save.
+   */
+  private safeParse<T>(value: any, fallback: T): T {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value !== 'string') return value as T;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed === null || parsed === undefined ? fallback : (parsed as T);
+    } catch {
+      return fallback;
+    }
+  }
+
+  getDecks(url: string = baseUrl): Observable<IDeck[]> {
+    return this.http.get<any[]>(url + 'decks').pipe(
+      map((decks) => {
+        return decks
+          .map((deck) => {
+            const cards: ICountCard[] = JSON.parse(deck.cards);
+            let sideDeck: ICountCard[];
+            if (deck.sideDeck) {
+              sideDeck = JSON.parse(deck.sideDeck !== '' ? deck.sideDeck : '[]');
+            } else {
+              sideDeck = [];
+            }
+
+            const color: IColor = JSON.parse(deck.color);
+            const tags: ITag[] = JSON.parse(deck.tags);
+            const likes: string[] = deck.likes ? JSON.parse(deck.likes) : [];
+            return {
+              ...deck,
+              likes,
+              cards,
+              sideDeck,
+              color,
+              tags,
+            } as IDeck;
+          })
+          .sort(sortByReleaseOrder);
+      }),
+    );
+  }
+
+  getUserDecks(url: string = baseUrl): Observable<IUserAndDecks[]> {
+    return this.http.get<any[]>(url + 'users/decks').pipe(
+      map((array: any[]) => {
+        return array.filter((user) => user[1] !== '[]');
+      }),
+      map((array: any[]) => {
+        const userAndDecks: IUserAndDecks[] = [];
+        array.forEach((user) => {
+          let parsedDecks: any[] = JSON.parse(user[1]);
+          userAndDecks.push({ user: user[0], decks: parsedDecks });
+        });
+
+        return userAndDecks;
+      }),
+    );
+  }
+
+  getSaves(url: string = baseUrl): Observable<ISave[]> {
+    return this.http.get<any[]>(url + 'users').pipe(
+      map((saves) => {
+        return saves.map((save) => {
+          const collection: ICountCard[] = JSON.parse(save.collection);
+          const decks: IDeck[] = JSON.parse(save.decks);
+          const settings: ISettings = JSON.parse(save.settings);
+          return {
+            ...save,
+            collection,
+            decks,
+            settings,
+          } as ISave;
+        });
+      }),
+    );
+  }
+
+  getDeck(id: any): Observable<IDeck> {
+    return this.http.get<any>(`${baseUrl}decks/${id}`).pipe(
+      map((deck) => {
+        const cards: ICountCard = JSON.parse(deck.cards);
+        const sideDeck: ICountCard = JSON.parse(deck.sideDeck !== '' ? deck.sideDeck : '[]');
+        const color: IColor = JSON.parse(deck.color);
+        const tags: ITag[] = JSON.parse(deck.tags);
+        const likes: string[] = deck.likes ? JSON.parse(deck.likes) : [];
+        return {
+          ...deck,
+          likes,
+          cards,
+          sideDeck,
+          color,
+          tags,
+        } as IDeck;
+      }),
+    );
+  }
+
+  getSave(id: any): Observable<ISave> {
+    return this.http.get<any>(`${baseUrl}users/${id}`).pipe(
+      map((save) => {
+        const collection: ICountCard[] = this.safeParse<ICountCard[]>(save.collection, []);
+        const decks: IDeck[] = this.safeParse<IDeck[]>(save.decks, []);
+        const settings: ISettings = this.safeParse<ISettings>(save.settings, { ...emptySettings });
+        const newSave = {
+          ...save,
+          collection,
+          decks,
+          settings,
+        } as ISave;
+
+        newSave.settings.aaCollectionMinimum =
+          newSave.settings.aaCollectionMinimum !== undefined ? newSave.settings.aaCollectionMinimum : 1;
+
+        newSave.settings.countMax = newSave.settings.countMax !== undefined ? newSave.settings.countMax : 5;
+
+        newSave.settings.cardSet = newSave.settings.cardSet === 'Both' ? 'English' : newSave.settings.cardSet;
+
+        newSave.settings.collectionSets = newSave.settings.collectionSets !== undefined ? newSave.settings.collectionSets : [];
+        newSave.settings.showReprintCards = newSave.settings.showReprintCards !== undefined ? newSave.settings.showReprintCards : false;
+        newSave.settings.showSpecialRareCards =
+          newSave.settings.showSpecialRareCards !== undefined ? newSave.settings.showSpecialRareCards : false;
+        newSave.settings.showReprintCards = newSave.settings.showReprintCards !== undefined ? newSave.settings.showRarePullCards : false;
+        newSave.settings.deckDisplayTable = newSave.settings.deckDisplayTable !== undefined ? newSave.settings.deckDisplayTable : false;
+        newSave.settings.showRarePullCards = newSave.settings.showRarePullCards !== undefined ? newSave.settings.showRarePullCards : false;
+        newSave.settings.showNormalCards = newSave.settings.showNormalCards ?? false;
+
+        newSave.decks = checkDeckErrors(newSave.decks);
+
+        return newSave;
+      }),
+    );
+  }
+
+  createDeck(data: IDeck): Observable<any> {
+    return this.http.post(baseUrl + 'decks', data);
+  }
+
+  updateDeck(deck: IDeck, user: IUser | null = null, allCards: DigimonCard[]): Observable<any> {
+    let newDeck: any;
+    if (user) {
+      newDeck = {
+        ...deck,
+        user: user.displayName ?? 'Unknown',
+        userId: user.uid ?? 'Unknown',
+        date: new Date(),
+      };
+    } else {
+      newDeck = deck;
+    }
+
+    if (!newDeck.imageCardId || newDeck.imageCardId === 'BT1-001') {
+      newDeck.imageCardId = setDeckImage(newDeck, allCards).id;
+    }
+
+    return this.http.put(`${baseUrl}decks/${deck.id}`, newDeck);
+  }
+
+  updateSave(save: ISave): Observable<any> {
+    return this.http.put(`${baseUrl}users/${save.uid}`, save);
+  }
+
+  deleteDeck(id: any): Observable<any> {
+    return this.http.delete(`${baseUrl}decks/${id}`);
+  }
+
+  checkSaveValidity(save: any, user?: any): ISave {
+    let changedSave = false;
+    if (user) {
+      if (!save.collection) {
+        save = { ...save, collection: user.save.collection };
+        changedSave = true;
+      }
+      if (!save.decks) {
+        save = { ...save, decks: user.save.decks };
+        changedSave = true;
+      }
+      if (!save.settings) {
+        save = { ...save, settings: user.save.settings };
+        changedSave = true;
+      }
+      if (!save.uid) {
+        save = { ...save, uid: user.uid };
+        changedSave = true;
+      }
+      if (!save.displayName) {
+        save = { ...save, displayName: user.displayName };
+        changedSave = true;
+      }
+      if (!save.photoUrl) {
+        save = { ...save, photoUrl: user.photoURL };
+      }
+    } else {
+      if (!save.collection) {
+        save = { ...save, collection: [] };
+        changedSave = true;
+      }
+      if (!save.decks) {
+        save = { ...save, decks: [] };
+        changedSave = true;
+      }
+      if (!save.settings) {
+        save = { ...save, settings: emptySettings };
+        changedSave = true;
+      }
+      if (!save.uid) {
+        save = { ...save, uid: '' };
+        changedSave = true;
+      }
+      if (!save.displayName) {
+        save = { ...save, displayName: '' };
+        changedSave = true;
+      }
+      if (!save.photoUrl) {
+        save = { ...save, photoUrl: '' };
+        changedSave = true;
+      }
+
+      save.settings.collectionSets = save.settings.collectionSets ?? [];
+      save.settings.showReprintCards = save.settings.showReprintCards ?? false;
+      save.settings.showSpecialRareCards = save.settings.showSpecialRareCards ?? false;
+      save.settings.showReprintCards = save.settings.showReprintCards ?? false;
+      save.settings.deckDisplayTable = save.settings.deckDisplayTable ?? false;
+      save.settings.showRarePullCards = save.settings.showRarePullCards ?? false;
+      save.settings.showNormalCards = save.settings.showNormalCards ?? false;
+
+      save.decks = checkDeckErrors(save.decks);
+    }
+
+    if (save.settings.cardSet === undefined || save.settings.cardSet === 'Overwrite' || +save.settings.cardSet >>> 0) {
+      save = {
+        ...save,
+        settings: { ...save.settings, cardSet: CARDSET.English },
+      };
+      changedSave = true;
+    }
+    if (save.settings.collectionMinimum === undefined) {
+      save = { ...save, settings: { ...save.settings, collectionMinimum: 1 } };
+      changedSave = true;
+    }
+    if (save.settings.showPreRelease === undefined) {
+      save = { ...save, settings: { ...save.settings, showPreRelease: true } };
+      changedSave = true;
+    }
+    if (save.settings.showStampedCards === undefined) {
+      save = {
+        ...save,
+        settings: { ...save.settings, showStampedCards: true },
+      };
+      changedSave = true;
+    }
+    if (save.settings.showAACards === undefined) {
+      save = { ...save, settings: { ...save.settings, showAACards: true } };
+      changedSave = true;
+    }
+    if (save.settings.showUserStats === undefined) {
+      save = { ...save, settings: { ...save.settings, showUserStats: true } };
+      changedSave = true;
+    }
+
+    if (changedSave && user?.uid) {
+      this.updateSave(save).pipe(first()).subscribe();
+    }
+    return save;
+  }
+}

@@ -1,0 +1,308 @@
+@use 'scrollbar';
+@use 'slider';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'primeicons/primeicons.css';
+
+:root {
+  // Visible viewport height: iOS counts 100vh with the toolbars hidden, so page bottoms sat under Chrome's bottom bar
+  --app-vh: 100vh;
+  @supports (height: 100dvh) {
+    --app-vh: 100dvh;
+  }
+
+  // Design tokens ("Digivice Dark"); hex copies live in digimon-preset.ts
+  --dc-ink-0: #0b111b;
+  --dc-ink-1: #111a28;
+  --dc-ink-2: #18243a;
+  --dc-line: #26354f;
+  --dc-fg: #e6edf7;
+  --dc-muted: #93a4bd;
+  --dc-accent: #4cc3ff;
+  --dc-accent-strong: #1d6fa8;
+  --dc-accent-ink: #04121f;
+  // Page background: the gradient from the original site
+  --dc-bg-top: #17212f;
+  --dc-bg-bottom: #08528d;
+
+  --p-surface-950: var(--dc-ink-1) !important;
+  --p-surface-900: var(--dc-ink-1) !important;
+  --p-surface-800: var(--dc-ink-1) !important;
+  --surface-card: var(--dc-ink-1) !important;
+  --highlight: var(--dc-ink-2) !important;
+  --p-overlay-modal-padding: 1.25rem !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+// IOS Long Click
+body {
+  -webkit-touch-callout: default !important;
+  background: linear-gradient(180deg, var(--dc-bg-top), var(--dc-bg-bottom)) fixed;
+}
+
+* {
+  font-family:
+    Inter,
+    -apple-system,
+    sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+h1:not(.text-xs) {
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+// Many filters use a tiny h1 as a field label; style those like the mockup's labels
+h1.text-xs {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dc-muted) !important;
+}
+
+.primary-color {
+  color: var(--primary-color);
+}
+
+.bg {
+  background-color: var(--dc-ink-0);
+}
+
+.primary-background {
+  background-color: var(--dc-accent-strong) !important;
+}
+
+.primary-border {
+  border: 2px solid var(--dc-accent);
+}
+
+.border-selected {
+  border: 2px solid white;
+
+  &.White {
+    box-shadow:
+      inset 0 0 0px 2px hsl(0deg 0% 0%),
+      0 0 0 2px hsl(0deg 0% 100%);
+    border: none;
+  }
+}
+
+.border-selected-tx {
+  border-top: 2px solid white;
+  border-right: 2px solid white;
+  border-left: 2px solid white;
+}
+
+.border-unselected {
+  border: 1px solid black;
+}
+
+.surface-card {
+  background-color: var(--p-surface-950);
+}
+
+.surface-ground {
+  background-color: var(--p-surface-950);
+}
+
+.button-highlight-background {
+  background-color: var(--highlight);
+}
+
+.c-white {
+  color: white;
+}
+
+.bottom-1 {
+  bottom: 0.25rem;
+}
+
+.bottom-10 {
+  bottom: 2.5rem;
+}
+
+.text-black-outline {
+  color: #fff;
+  text-shadow:
+    3px 0 0 #000,
+    0 -3px 0 #000,
+    0 3px 0 #000,
+    -3px 0 0 #000;
+}
+
+.text-black-outline-xs {
+  color: #fff;
+  text-shadow:
+    2px 0 0 #000,
+    0 -2px 0 #000,
+    0 2px 0 #000,
+    -2px 0 0 #000;
+}
+
+.text-shadow {
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+}
+
+.text-shadow-white {
+  text-shadow:
+    -2px -2px 0 white,
+    2px -2px 0 white,
+    -2px 2px 0 white,
+    2px 2px 0 white;
+}
+
+.text-shadow-white-xs {
+  text-shadow:
+    -1px -1px 0 white,
+    1px -1px 0 white,
+    -1px 1px 0 white,
+    1px 1px 0 white;
+}
+
+.Red {
+  background: #e5484d;
+}
+
+.Blue {
+  background: #3e9bff;
+}
+
+.Yellow {
+  background: #f5c518;
+}
+
+.Green {
+  background: #2fb67c;
+}
+
+.Black {
+  background: #1c1f26;
+}
+
+.Purple {
+  background: #8d6fdb;
+}
+
+.White {
+  background: #ffffff;
+}
+
+.raise:hover,
+.raise:focus {
+  box-shadow: 0.2em 0.5em 0.5em 0 gray;
+  transform: translateY(-0.25em);
+}
+
+.raise-xs:hover,
+.raise-xs:focus {
+  box-shadow: 0.1em 0.25em 0.25em 0 gray;
+  transform: translateY(-0.12em);
+}
+
+.Multi {
+  background: linear-gradient(90deg, #e5484d 14%, #3e9bff 28%, #f5c518 42%, #2fb67c 56%, #1c1f26 70%, #8d6fdb 84%, #ffffff 100%);
+}
+
+digimon-multi-select {
+  ::ng-deep .p-multiselect {
+    max-width: 10rem;
+  }
+}
+
+.dialog {
+  ::ng-deep .p-multiselect {
+    width: 100%;
+  }
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grid-cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.grid-cols-8 {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.grid-cols-10 {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+.grid-cols-13 {
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+}
+
+/* ===== ===== */
+
+.animate-scroll {
+  display: inline-block;
+  color: #fff;
+  padding-left: 100%;
+  animation: move 25s linear infinite;
+}
+
+@keyframes move {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(-100%, 0);
+  }
+}
+
+/* ===== ===== */
+p-dialog::ng-deep {
+  .p-dialog-content {
+    overflow-x: hidden;
+  }
+}
+
+/* ===== Stat Pills ===== */
+.stat-container {
+  width: 22px;
+  height: 60px;
+  border: 1px solid var(--dc-line);
+  border-radius: 6px;
+  background: var(--dc-ink-2);
+  overflow: hidden;
+  margin: 0 auto;
+  display: flex;
+  align-items: baseline;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  position: relative;
+}
+
+.background-darker {
+  background-color: var(--dc-ink-0);
+}
+
+/* ===== Confirmation Dialog Padding ===== */
+:deep(.p-confirm-dialog-message) {
+  padding: 1rem;
+}
