@@ -3,6 +3,8 @@
  * Pure TypeScript: no Angular, no DOM. Everything here must stay JSON-serializable.
  */
 
+import type { EffectOption, QueueItem } from './effects/ast';
+
 export type PlayerIndex = 0 | 1;
 
 /** A single physical card instance. `uid` is unique per game, `cardId` is the printed card id. */
@@ -85,7 +87,23 @@ export type RulesMode = 'assisted' | 'manual';
  */
 export type Pending =
   | { kind: 'block'; owner: PlayerIndex; attacker: PlayerIndex; attackerStackId: string; blockers: string[]; checks: number }
-  | { kind: 'security'; owner: PlayerIndex; attacker: PlayerIndex; attackerStackId: string; remaining: number };
+  | { kind: 'security'; owner: PlayerIndex; attacker: PlayerIndex; attackerStackId: string; remaining: number }
+  | EffectPending;
+
+/**
+ * An effect choice for the effect's controller. `pick`: choose between min and max of `options`. `confirm`: "you may",
+ * answered with yes or no.
+ */
+export interface EffectPending {
+  kind: 'effect';
+  owner: PlayerIndex;
+  mode: 'pick' | 'confirm';
+  cardName: string;
+  prompt: string;
+  options: EffectOption[];
+  min: number;
+  max: number;
+}
 
 /** A non-blocking effect reminder. The player applies the effect with the manual tools. */
 export interface Reminder {
@@ -128,6 +146,14 @@ export interface GameState {
   winReason?: string | null;
   /** Effect reminders, newest last, capped at MAX_REMINDERS. */
   reminders?: Reminder[];
+  /** Automatic card effects (assisted only). Absent or true = on; false = reminders only. */
+  autoEffects?: boolean;
+  /** Triggered effects waiting to resolve, head first. Empty when nothing is queued. */
+  effectQueue?: QueueItem[];
+  /** [Once Per Turn] uses this turn, keyed by source uid and line. Reset when the turn number changes. */
+  oncePerTurn?: { turn: number; keys: string[] };
+  /** Set on online games. Effects that would need the owner's hidden cards then resolve only on the owner's turn. */
+  online?: boolean;
   /** The latest battle or security check (assisted mode). */
   lastCombat?: CombatResult | null;
   /** Original seed, kept for replay / debugging. Redacted for opponents by view.ts. */

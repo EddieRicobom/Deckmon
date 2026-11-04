@@ -128,6 +128,7 @@ export function createGame(
   deck1: readonly DeckListEntry[],
   names: [string, string] = ['Player 1', 'Player 2'],
   mode: RulesMode = 'manual',
+  autoEffects = true,
 ): GameState {
   const s = normaliseSeed(seed);
   const build = (idx: PlayerIndex, entries: readonly DeckListEntry[], name: string): PlayerState => {
@@ -157,6 +158,7 @@ export function createGame(
     players: [dealt0.player, dealt1.player],
     log: [{ seq: 0, turn: 1, player: 0, text: `Game started. ${names[0]} vs ${names[1]}.` }],
     version: STATE_VERSION,
+    ...(autoEffects ? {} : { autoEffects: false }),
   };
 }
 

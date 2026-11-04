@@ -23,6 +23,8 @@ export interface StartGameOptions {
   names: [string, string];
   /** Defaults to assisted. */
   mode?: RulesMode;
+  /** Assisted only: resolve card effects automatically (default) or show reminders only. */
+  autoEffects?: boolean;
 }
 
 /** Commands that change the shared turn. Only the active player may issue them online. */
@@ -98,7 +100,14 @@ export class GameSession {
 
   start(options: StartGameOptions): void {
     const seed = normaliseSeed(options.seed ?? Date.now() ^ Math.floor(Math.random() * 0xffffffff));
-    const state = createGame(seed, options.decks[0], options.decks[1], options.names, options.mode ?? 'assisted');
+    const state = createGame(
+      seed,
+      options.decks[0],
+      options.decks[1],
+      options.names,
+      options.mode ?? 'assisted',
+      options.autoEffects ?? true,
+    );
     this.transport = null;
     this.localPlayer.set(null);
     this.setHistory(createHistory(state));

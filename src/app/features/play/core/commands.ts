@@ -90,6 +90,11 @@ export type Command =
   /** Defender's answer to a pending block: a Blocker's stack id, or null for no block. */
   | (Base & { type: 'resolveBlock'; blockerStackId: string | null })
   /** Owner (defender) resolves the next security check of the pending attack. */
-  | (Base & { type: 'securityCheck' });
+  | (Base & { type: 'securityCheck' })
+  /**
+   * The effect controller answers an effect choice: `picks` (ids from the pending options) for a pick, or `yes` for
+   * a "you may" confirm.
+   */
+  | (Base & { type: 'resolveEffect'; picks?: string[]; yes?: boolean });
 
 export type CommandType = Command['type'];

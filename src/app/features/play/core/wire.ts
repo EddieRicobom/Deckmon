@@ -12,6 +12,7 @@ import { normaliseSeed } from './rng';
 import { redactPlayer, HIDDEN_CARD_ID } from './view';
 import { clampMemory } from './reducer';
 import { GameState, PHASES, Phase, Pending, PlayerIndex, PlayerState, RulesMode, STATE_VERSION } from './types';
+import type { QueueItem } from './effects/ast';
 
 export interface WireCommand {
   cmd: Command;
@@ -96,6 +97,7 @@ export function createOnlineState(args: {
     players,
     log: [{ seq: 0, turn: 1, player: 0, text: `Game started. ${args.names[0]} vs ${args.names[1]}.` }],
     version: STATE_VERSION,
+    online: true,
   };
 }
 
@@ -111,6 +113,8 @@ export function publicHash(state: GameState): string {
     d: state.pending ?? null,
     w: state.winner ?? null,
     b: [redactPlayer(state.players[0]), redactPlayer(state.players[1])],
+    // Queue length only when something waits, so states without effects hash as before.
+    q: (state.effectQueue ?? []).length || undefined,
   });
   let h = 0x811c9dc5;
   for (let i = 0; i < view.length; i++) {
@@ -132,6 +136,7 @@ export interface ResyncPayload {
   pending?: Pending | null;
   winner?: PlayerIndex | null;
   winReason?: string | null;
+  effectQueue?: QueueItem[];
 }
 
 export function resyncPayload(state: GameState, me: PlayerIndex): ResyncPayload {
@@ -146,6 +151,7 @@ export function resyncPayload(state: GameState, me: PlayerIndex): ResyncPayload 
     pending: state.pending ?? null,
     winner: state.winner ?? null,
     winReason: state.winReason ?? null,
+    effectQueue: state.effectQueue ?? [],
   };
 }
 
@@ -166,6 +172,7 @@ export function applyResync(state: GameState, remote: PlayerIndex, payload: Resy
   next.pending = payload.pending ?? null;
   next.winner = payload.winner ?? null;
   next.winReason = payload.winReason ?? null;
+  next.effectQueue = Array.isArray(payload.effectQueue) ? payload.effectQueue : [];
   next.players[remote] = { ...(JSON.parse(JSON.stringify(payload.board)) as PlayerState), name: state.players[remote].name };
   return next;
 }

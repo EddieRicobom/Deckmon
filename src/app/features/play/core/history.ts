@@ -85,10 +85,11 @@ export function canUndo(history: GameHistory): boolean {
 /**
  * A command that continues the step of the command before it. The automatic battle, block and security decisions
  * that an attack causes are part of that attack, so one undo takes back the attack and everything it resolved.
- * (Solo: the auto security checks; online: the defender's answer to a block or a security check.)
+ * (Solo: the auto security checks; online: the defender's answer to a block or a security check. Both: the controller's
+ * answer to an effect choice.)
  */
 export function continuesStep(cmd: Command): boolean {
-  return cmd.type === 'securityCheck' || cmd.type === 'resolveBlock';
+  return cmd.type === 'securityCheck' || cmd.type === 'resolveBlock' || cmd.type === 'resolveEffect';
 }
 
 /** Index of the first command of the undo step that contains command `index`. */

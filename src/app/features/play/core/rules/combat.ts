@@ -19,29 +19,52 @@ import {
 } from './helpers';
 import { cardLabel } from '../labels';
 import { CombatResult, GameState, PlayerIndex } from '../types';
+import { enqueueAttack } from '../effects/queue';
 
 export type AttackCommand = Extract<Command, { type: 'attack' }>;
 
-/** Declares an attack: suspends the attacker, then either battles a suspended Digimon or goes to the player. */
+/**
+ * Declares an attack: suspends the attacker and queues its When Attacking effects. The rest of the attack (blocks,
+ * battle, security) is queued behind them and runs in `resumeAttack`, so a +DP effect applies before the battle.
+ */
 export function declareAttack(state: GameState, cmd: AttackCommand): void {
   const atk = cmd.player;
   const def = other(atk);
   const attacker = findStack(state.players[atk], cmd.attackerStackId);
   if (!attacker) throw new Error('Attacker not found');
+  if (cmd.target.kind === 'stack' && !findStack(state.players[def], cmd.target.stackId)) throw new Error('Target not found');
   attacker.suspended = true;
-  remindStack(state, atk, attacker, 'When Attacking');
-
   if (cmd.target.kind === 'stack') {
-    const defender = findStack(state.players[def], cmd.target.stackId);
-    if (!defender) throw new Error('Target not found');
+    const defender = findStack(state.players[def], cmd.target.stackId)!;
     log(state, atk, `${stackName(attacker)} attacks ${stackName(defender)}.`);
+  } else {
+    log(state, atk, `${stackName(attacker)} attacks ${state.players[def].name}.`);
+  }
+  remindStack(state, atk, attacker, 'When Attacking');
+  enqueueAttack(state, { kind: 'attack', attacker: atk, attackerStackId: attacker.stackId, target: cmd.target });
+}
+
+/** Continues a declared attack once its When Attacking effects have resolved: a battle, or blockers and security. */
+export function resumeAttack(
+  state: GameState,
+  atk: PlayerIndex,
+  attackerStackId: string,
+  target: { kind: 'player' } | { kind: 'stack'; stackId: string },
+): void {
+  const def = other(atk);
+  const attacker = findStack(state.players[atk], attackerStackId);
+  if (!attacker) return;
+  if (target.kind === 'stack') {
+    const defender = findStack(state.players[def], target.stackId);
+    if (!defender) return;
     battle(state, atk, attacker.stackId, def, defender.stackId);
     return;
   }
 
-  log(state, atk, `${stackName(attacker)} attacks ${state.players[def].name}.`);
   const checks = securityChecks(attacker);
-  const blockers = state.players[def].battle.filter((s) => !s.suspended && hasKeyword(s, 'Blocker')).map((s) => s.stackId);
+  const blockers = state.players[def].battle
+    .filter((s) => !s.suspended && hasKeyword(s, 'Blocker') && !hasKeyword(s, "Can't block"))
+    .map((s) => s.stackId);
   if (blockers.length > 0) {
     state.pending = {
       kind: 'block',
@@ -140,7 +163,7 @@ export function securityCheck(state: GameState): void {
       attackerGone = true;
     }
   } else {
-    remind(state, def, sec.cardId, 'Security');
+    remind(state, def, sec.cardId, 'Security', sec.uid);
     setCombat(state, {
       kind: 'security',
       attacker: atk,

@@ -3,10 +3,11 @@
  * always works on one).
  */
 import { cardInfo, CardInfo } from './card-data';
-import { keywordsIn, linesWithTiming, securityAttackMod } from './text';
+import { keywordsIn, securityAttackMod } from './text';
+import { triggerTiming, TriggerSource } from '../effects/queue';
 import { stackDpMod } from '../game';
 import { cardLabel } from '../labels';
-import { GameState, MAX_REMINDERS, MEMORY_MAX, MEMORY_MIN, PlayerIndex, PlayerState, Stack } from '../types';
+import { GameState, MEMORY_MAX, MEMORY_MIN, PlayerIndex, PlayerState, Stack } from '../types';
 
 const clampMemory = (v: number): number => Math.max(MEMORY_MIN, Math.min(MEMORY_MAX, Math.round(v)));
 
@@ -98,28 +99,30 @@ export function setWinner(state: GameState, winner: PlayerIndex, reason: string)
   state.winner = winner;
   state.winReason = reason;
   state.pending = null;
+  state.effectQueue = [];
   log(state, winner, `${state.players[winner].name} wins: ${reason}`);
 }
 
-/** Pushes one reminder per timing tag found on the matching lines of the card's text. */
-export function remind(state: GameState, owner: PlayerIndex, cardId: string, timing: string): void {
-  const info = cardInfo(cardId);
-  if (!info) return;
-  const body = timing === 'Security' ? info.securityEffect : info.effect;
-  const lines = linesWithTiming(body, timing);
-  if (lines.length === 0) return;
-  const list = state.reminders ?? [];
-  for (const line of lines) {
-    state.nextId += 1;
-    list.push({ id: state.nextId, turn: state.turn, player: owner, cardName: info.name, timing, text: line });
-  }
-  state.reminders = list.slice(-MAX_REMINDERS);
+/**
+ * A timing tag raised for one card (for example 'On Play'). Triggered effects queue; the rest become reminders.
+ * `uid` is the card's own uid (once-per-turn keys and the source of self targets).
+ */
+export function remind(state: GameState, owner: PlayerIndex, cardId: string, timing: string, uid?: string): void {
+  triggerTiming(state, owner, [{ uid: uid ?? cardId, cardId, field: timing === 'Security' ? 'securityEffect' : 'effect' }], timing);
 }
 
-/** Reminders for every timing tag on a stack's top card, for the given timing. */
+/**
+ * A timing tag raised for a stack: the top card's own text, plus the digivolution text of the cards under it
+ * (inherited by the stack).
+ */
 export function remindStack(state: GameState, owner: PlayerIndex, stack: Stack, timing: string): void {
   const top = topCard(stack);
-  if (top) remind(state, owner, top.cardId, timing);
+  if (!top) return;
+  const sources: TriggerSource[] = [
+    { uid: top.uid, cardId: top.cardId, field: timing === 'Security' ? 'securityEffect' : 'effect' },
+    ...stack.cards.slice(0, -1).map((c) => ({ uid: c.uid, cardId: c.cardId, field: 'digivolveEffect' as const })),
+  ];
+  triggerTiming(state, owner, sources, timing);
 }
 
 /**

@@ -260,7 +260,8 @@ describe('play and digivolve', () => {
     const after = run(s, playHand(0, 'p0-o', 'option'));
     expect(after.players[0].trash.map((x) => x.uid)).toContain('p0-o');
     expect(after.players[0].option.length).toBe(0);
-    expect(after.memory).toBe(2);
+    // Starts at 3, pays the cost of 1, then the card's own "Gain 2 memory" resolves.
+    expect(after.memory).toBe(4);
   });
 
   it('a blue option with no blue side is refused', () => {
@@ -369,8 +370,17 @@ describe('attacks', () => {
     expect(checked.players[1].trash.length).toBe(1);
   });
 
-  it('a Tamer security card goes to trash and shows its [Security] reminder', () => {
+  it('a Tamer security card with [Security] is played for free when effects are on', () => {
     const s = game();
+    s.players[1].security = [{ uid: 'p1-tam', cardId: 'TAMER', faceUp: false }];
+    s.players[0].battle = [st('a1', [c(0, 'a', 'L4')])];
+    const after = run(s, attack(0, 'a1', 'player'), { type: 'securityCheck', player: 1 });
+    expect(after.players[1].tamer.some((t) => t.cards.some((x) => x.uid === 'p1-tam'))).toBe(true);
+  });
+
+  it('with effects off, a Tamer security card goes to trash and shows its [Security] reminder', () => {
+    const s = game();
+    s.autoEffects = false;
     s.players[1].security = [{ uid: 'p1-tam', cardId: 'TAMER', faceUp: false }];
     s.players[0].battle = [st('a1', [c(0, 'a', 'L4')])];
     const after = run(s, attack(0, 'a1', 'player'), { type: 'securityCheck', player: 1 });

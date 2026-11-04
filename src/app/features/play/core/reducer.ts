@@ -12,6 +12,8 @@ import { assistedError } from './rules/validate';
 import { passTurnRuled, autoEndTurnIfNeeded } from './rules/turn';
 import { declareAttack, resolveBlock, securityCheck } from './rules/combat';
 import { digivolveCost, drawOne, payCost, remind } from './rules/helpers';
+import { resolveEffectChoice, runEffects } from './effects/engine';
+import { setActor } from './effects/queue';
 import {
   CardRef,
   GameState,
@@ -43,6 +45,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
   const state = cloneState(input);
   const p = state.players[cmd.player];
   const who = p.name;
+  setActor(cmd.player);
   if (cmd.reveals) applyReveals(p, cmd.reveals);
   // Wire only: adopt the owner's PRNG state so randomness matches on both peers.
   if (cmd.rng !== undefined) state.rngState = cmd.rng >>> 0;
@@ -191,7 +194,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
         payCost(state, info?.playCost ?? 0);
         p.trash.push(card);
         say(`${who} played option ${cardLabel(card.cardId)} (effect applied by hand, then trashed).`);
-        remind(state, cmd.player, card.cardId, 'Main');
+        remind(state, cmd.player, card.cardId, 'Main', card.uid);
         break;
       }
       const stack = newStack(mintStackId(), [card]);
@@ -200,7 +203,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       say(`${who} played ${cardLabel(card.cardId)} to the ${cmd.to} area.`);
       if (ruled) {
         payCost(state, info?.playCost ?? 0);
-        remind(state, cmd.player, card.cardId, 'On Play');
+        remind(state, cmd.player, card.cardId, 'On Play', card.uid);
       }
       break;
     }
@@ -221,7 +224,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       stack.cards.push(card);
       say(`${who} digivolved into ${cardLabel(card.cardId)}.`);
       if (ruled) {
-        remind(state, cmd.player, card.cardId, 'When Digivolving');
+        remind(state, cmd.player, card.cardId, 'When Digivolving', card.uid);
         drawOne(state, cmd.player);
       }
       break;
@@ -241,6 +244,11 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
 
     case 'securityCheck': {
       securityCheck(state);
+      break;
+    }
+
+    case 'resolveEffect': {
+      resolveEffectChoice(state, cmd.picks, cmd.yes);
       break;
     }
 
@@ -384,8 +392,14 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
   }
 
   if (cmd.board) state.players[cmd.player] = JSON.parse(JSON.stringify(cmd.board)) as PlayerState;
+  // Triggered effects resolve here, so the whole command (and any turn change it causes) is one undo step.
+  if (state.mode === 'assisted') runEffects(state);
   // Memory on the opponent's side after an action ends the turn (assisted, main phase, nothing pending).
-  if (ruled) autoEndTurnIfNeeded(state);
+  if (ruled) {
+    autoEndTurnIfNeeded(state);
+    if (state.mode === 'assisted') runEffects(state);
+  }
+  setActor(null);
   return state;
 }
 

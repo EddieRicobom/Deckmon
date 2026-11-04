@@ -32,7 +32,7 @@ export const MANUAL_COMMANDS = new Set<Command['type']>([
   'changeMemoryBy',
 ]);
 
-const DECISIONS = new Set<Command['type']>(['resolveBlock', 'securityCheck']);
+const DECISIONS = new Set<Command['type']>(['resolveBlock', 'securityCheck', 'resolveEffect']);
 
 export function assistedError(state: GameState, cmd: Command): string | null {
   if (state.mode !== 'assisted' || cmd.force) return null;
@@ -41,12 +41,13 @@ export function assistedError(state: GameState, cmd: Command): string | null {
 
   if (pending) {
     const waiting = `Waiting for ${state.players[pending.owner].name} to resolve ${
-      pending.kind === 'block' ? 'a block' : 'a security check'
+      pending.kind === 'block' ? 'a block' : pending.kind === 'effect' ? 'an effect choice' : 'a security check'
     }.`;
     if (!DECISIONS.has(cmd.type)) return waiting;
     if (cmd.player !== pending.owner) return waiting;
     if (cmd.type === 'resolveBlock' && pending.kind !== 'block') return 'No block decision is pending.';
     if (cmd.type === 'securityCheck' && pending.kind !== 'security') return 'No security check is pending.';
+    if (cmd.type === 'resolveEffect' && pending.kind !== 'effect') return 'No effect choice is pending.';
     return null;
   }
 
@@ -121,6 +122,7 @@ export function assistedError(state: GameState, cmd: Command): string | null {
       const attacker = p.battle.find((s) => s.stackId === cmd.attackerStackId);
       if (!attacker) return 'Only a Digimon in your battle area can attack.';
       if (attacker.suspended) return 'A suspended Digimon cannot attack.';
+      if (hasKeyword(attacker, "Can't attack")) return 'This Digimon cannot attack this turn.';
       if (attacker.enteredTurn === state.turn && !hasKeyword(attacker, 'Rush')) {
         return 'That Digimon entered play this turn. Only a Digimon with Rush can attack.';
       }
