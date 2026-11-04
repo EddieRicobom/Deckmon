@@ -1,9 +1,10 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { Command } from './core/commands';
 import { createGame, DeckListEntry } from './core/game';
-import { GameHistory, canRedo, createHistory, dispatch, redo, rewindTo, undo, undoableSteps } from './core/history';
+import { GameHistory, canRedo, createHistory, dispatch, redo, rewindTo, stepStartIndex, undo, undoCommands, undoableSteps } from './core/history';
 import { GameState, PlayerIndex, RulesMode } from './core/types';
 import { normaliseSeed } from './core/rng';
+import { clearSoloGame, saveSoloGame } from './core/saved-game';
 import { applyResync, buildWire, ResyncPayload, WireCommand } from './core/wire';
 
 /**
@@ -46,9 +47,13 @@ export class GameSession {
 
   readonly state = computed<GameState | null>(() => this.history()?.present ?? null);
   /** How many steps undo would take back right now (0 when blocked). */
+  /**
+   * Online, a pending block or security check belongs to the peer's decision, so undo waits for it. Solo, a pending
+   * block is this player's own prompt inside the attack's step, so undo takes the whole attack back.
+   */
   readonly undoCount = computed(() => {
     const h = this.history();
-    if (!h || this.state()?.pending) return 0;
+    if (!h || (this.localPlayer() !== null && this.state()?.pending)) return 0;
     return undoableSteps(h, this.localPlayer());
   });
   readonly canUndo = computed(() => this.undoCount() > 0);
@@ -56,16 +61,16 @@ export class GameSession {
   readonly undoBlockReason = computed<string | null>(() => {
     const h = this.history();
     if (!h || h.commands.length === 0 || this.undoCount() > 0) return null;
-    if (this.state()?.pending) return 'A decision is pending.';
-    const last = h.commands.length - 1;
-    if (h.learned[last]) return 'This step revealed hidden information, so it cannot be undone.';
+    if (this.localPlayer() !== null && this.state()?.pending) return 'A decision is pending.';
+    const newestSnapshot = h.learned.length - 1;
+    if (newestSnapshot >= 0 && h.learned[newestSnapshot]) return 'This step revealed hidden information, so it cannot be undone.';
     if (this.localPlayer() !== null) return 'Your opponent has acted since your last move.';
     return null;
   });
   /** Redo exists in solo only. Online steps are already sent to the peer, so they cannot be replayed locally. */
   readonly canRedo = computed(() => {
     const h = this.history();
-    return !!h && this.localPlayer() === null && canRedo(h) && !this.state()?.pending;
+    return !!h && this.localPlayer() === null && canRedo(h);
   });
   /** The live command log length, for "rewind to here" in the log panel (solo only). */
   readonly historyEntries = computed(() => this.history()?.commands.length ?? 0);
@@ -87,7 +92,6 @@ export class GameSession {
     const h = this.history();
     if (!h || this.canRedo()) return null;
     if (this.localPlayer() !== null) return 'Redo is only available in solo play. Online steps are already sent to your opponent.';
-    if (this.state()?.pending) return 'A decision is pending.';
     if (h.future.length === 0) return 'Nothing to redo.';
     return null;
   });
@@ -97,9 +101,22 @@ export class GameSession {
     const state = createGame(seed, options.decks[0], options.decks[1], options.names, options.mode ?? 'assisted');
     this.transport = null;
     this.localPlayer.set(null);
-    this.history.set(createHistory(state));
+    this.setHistory(createHistory(state));
     this.lastOptions = { ...options, seed: undefined };
     this.force.set(false);
+    this.lastError.set(null);
+  }
+
+  /**
+   * Solo only: resumes a saved game from its current state. The undo history starts fresh, and rematch is not
+   * available because the saved game does not carry its decks.
+   */
+  resumeSolo(state: GameState): void {
+    this.transport = null;
+    this.localPlayer.set(null);
+    this.lastOptions = null;
+    this.force.set(false);
+    this.setHistory(createHistory(state));
     this.lastError.set(null);
   }
 
@@ -125,7 +142,7 @@ export class GameSession {
   startOnline(state: GameState, local: PlayerIndex, transport: CommandTransport): void {
     this.transport = transport;
     this.localPlayer.set(local);
-    this.history.set(createHistory(state));
+    this.setHistory(createHistory(state));
     this.lastError.set(null);
   }
 
@@ -202,9 +219,10 @@ export class GameSession {
     const available = this.undoCount();
     const n = steps === 'all' ? available : Math.min(steps, available);
     const next = undo(h, n);
-    this.history.set(next);
+    this.setHistory(next);
     this.lastError.set(null);
     if (this.transport) this.transport.sendUndo(next.commands.length, next.present);
+    this.settleSolo();
     return true;
   }
 
@@ -212,8 +230,9 @@ export class GameSession {
   redo(): boolean {
     const h = this.history();
     if (!h || !this.canRedo()) return false;
-    this.history.set(redo(h));
+    this.setHistory(redo(h));
     this.lastError.set(null);
+    this.settleSolo();
     return true;
   }
 
@@ -222,13 +241,22 @@ export class GameSession {
     const h = this.history();
     if (!h || this.localPlayer() !== null || this.state()?.pending) return false;
     if (length < 0 || length >= h.commands.length) return false;
-    if (h.commands.length - length > h.past.length) {
+    if (h.commands.length - stepStartIndex(h, length) > h.past.length) {
       this.setError('Cannot rewind that far: the earlier steps are no longer kept.');
       return false;
     }
-    this.history.set(rewindTo(h, length));
+    this.setHistory(rewindTo(h, length));
     this.lastError.set(null);
+    this.settleSolo();
     return true;
+  }
+
+  /**
+   * Safety net after a restore: solo never stays on a pending security check (the solo device resolves those itself).
+   * Steps are kept whole, so this normally does nothing.
+   */
+  private settleSolo(): void {
+    if (this.localPlayer() === null) this.autoSecurity();
   }
 
   /**
@@ -263,7 +291,7 @@ export class GameSession {
     for (let i = h.commands.length - 1; i >= target; i--) {
       if (h.commands[i].player !== remote) return false;
     }
-    this.history.set(undo(h, h.commands.length - target));
+    this.setHistory(undoCommands(h, h.commands.length - target));
     return true;
   }
 
@@ -276,7 +304,7 @@ export class GameSession {
     if (!h || this.remote() !== remote) return false;
     try {
       const next = applyResync(h.present, remote, payload);
-      this.history.set({
+      this.setHistory({
         initial: h.initial,
         commands: h.commands,
         past: [],
@@ -296,8 +324,16 @@ export class GameSession {
   clear(): void {
     this.transport = null;
     this.localPlayer.set(null);
-    this.history.set(null);
+    this.setHistory(null);
     this.lastError.set(null);
+  }
+
+  /** Every history change goes through here. Solo games are saved on each change; a finished game is dropped. */
+  private setHistory(h: GameHistory | null): void {
+    this.history.set(h);
+    if (this.localPlayer() !== null || !h) return;
+    if (h.present.winner !== null && h.present.winner !== undefined) clearSoloGame();
+    else saveSoloGame(h.present);
   }
 
   private remote(): PlayerIndex | null {
@@ -313,7 +349,7 @@ export class GameSession {
       return false;
     }
     try {
-      this.history.set(dispatch(h, cmd, this.localPlayer()));
+      this.setHistory(dispatch(h, cmd, this.localPlayer()));
       this.lastError.set(null);
       return true;
     } catch (err) {

@@ -83,25 +83,67 @@ export function canUndo(history: GameHistory): boolean {
 }
 
 /**
- * How many steps the viewer may undo right now, counting back from the newest step. Stops at the first step that
+ * A command that continues the step of the command before it. The automatic battle, block and security decisions
+ * that an attack causes are part of that attack, so one undo takes back the attack and everything it resolved.
+ * (Solo: the auto security checks; online: the defender's answer to a block or a security check.)
+ */
+export function continuesStep(cmd: Command): boolean {
+  return cmd.type === 'securityCheck' || cmd.type === 'resolveBlock';
+}
+
+/** Index of the first command of the undo step that contains command `index`. */
+export function stepStartIndex(history: GameHistory, index: number): number {
+  let k = index;
+  while (k > 0 && continuesStep(history.commands[k])) k--;
+  return k;
+}
+
+/** Number of commands in the newest undo step (0 when there is no command). */
+function commandsInNewestStep(history: GameHistory): number {
+  if (history.commands.length === 0) return 0;
+  return history.commands.length - stepStartIndex(history, history.commands.length - 1);
+}
+
+/**
+ * How many undo steps the viewer may undo right now, counting back from the newest step. Stops at the first step that
  * belongs to another seat, revealed hidden information to the viewer, or has no snapshot left (past the cap, or
  * after a resync). `viewer` null means solo: no owner check.
  */
 export function undoableSteps(history: GameHistory, viewer: PlayerIndex | null): number {
-  let n = 0;
-  while (n < history.past.length) {
-    const k = history.past.length - 1 - n;
-    if (history.learned[k]) break;
-    if (viewer !== null && history.commands[history.commands.length - 1 - n]?.player !== viewer) break;
-    n++;
+  const firstSnapshot = history.commands.length - history.past.length;
+  let steps = 0;
+  let end = history.commands.length;
+  while (end > 0) {
+    const start = stepStartIndex(history, end - 1);
+    if (start < firstSnapshot) break;
+    for (let k = start; k < end; k++) {
+      if (history.learned[k - firstSnapshot]) return steps;
+      if (viewer !== null && history.commands[k].player !== viewer) return steps;
+    }
+    steps++;
+    end = start;
   }
-  return n;
+  return steps;
 }
 
-/** Steps back `steps` commands (default 1). Undone steps move to `future` so they can be redone. */
+/** Undoes `steps` whole undo steps (default 1). Undone commands move to `future` so they can be redone. */
 export function undo(history: GameHistory, steps = 1): GameHistory {
   let h = history;
-  for (let i = 0; i < steps && canUndo(h); i++) {
+  for (let i = 0; i < steps; i++) {
+    const count = commandsInNewestStep(h);
+    if (count === 0 || count > h.past.length) break;
+    h = undoCommands(h, count);
+  }
+  return h;
+}
+
+/**
+ * Undoes exactly `count` commands, counted from the newest. Internal to undo and to the peer sync, which counts
+ * commands, not steps. Undone steps move to `future` so they can be redone.
+ */
+export function undoCommands(history: GameHistory, count: number): GameHistory {
+  let h = history;
+  for (let i = 0; i < count && canUndo(h); i++) {
     const last = h.past.length - 1;
     const cmdIdx = h.commands.length - 1;
     h = {
@@ -117,30 +159,42 @@ export function undo(history: GameHistory, steps = 1): GameHistory {
   return h;
 }
 
-/** Rewinds until exactly `length` commands remain. Used by "rewind to here" in the log. */
+/**
+ * Rewinds until `length` commands remain, never inside a step: a length that falls in the middle of an attack's
+ * resolution rewinds to before the whole attack. Used by "rewind to here" in the log.
+ */
 export function rewindTo(history: GameHistory, length: number): GameHistory {
   if (length < 0 || length >= history.commands.length) return history;
-  return undo(history, history.commands.length - length);
+  const target = stepStartIndex(history, length);
+  return undoCommands(history, history.commands.length - target);
 }
 
 export function canRedo(history: GameHistory): boolean {
   return history.future.length > 0;
 }
 
-/** Re-applies the most recently undone step. Returns the same history when there is nothing to redo. */
+/**
+ * Re-applies the most recently undone step: its first command and the continuation commands beneath it in `future`.
+ * Returns the same history when there is nothing to redo.
+ */
 export function redo(history: GameHistory): GameHistory {
-  const step = history.future[history.future.length - 1];
-  if (!step) return history;
-  const [past, learned] = withSnapshot(history.past, history.learned, history.present, step.learned);
-  return {
-    initial: history.initial,
-    commands: [...history.commands, step.command],
-    past,
-    learned,
-    present: step.state,
-    future: history.future.slice(0, -1),
-    marks: [...history.marks, history.present.log.length],
-  };
+  let h = history;
+  let first = true;
+  while (h.future.length > 0 && (first || continuesStep(h.future[h.future.length - 1].command))) {
+    first = false;
+    const step = h.future[h.future.length - 1];
+    const [past, learned] = withSnapshot(h.past, h.learned, h.present, step.learned);
+    h = {
+      initial: h.initial,
+      commands: [...h.commands, step.command],
+      past,
+      learned,
+      present: step.state,
+      future: h.future.slice(0, -1),
+      marks: [...h.marks, h.present.log.length],
+    };
+  }
+  return h;
 }
 
 /** Rebuilds a state from the initial state and a command list. */

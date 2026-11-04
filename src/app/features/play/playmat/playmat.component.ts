@@ -12,6 +12,7 @@ import { assistedError } from '../core/rules/validate';
 import { CombatResult, GameState, MEMORY_MAX, MEMORY_MIN, PHASES, Phase, PlayerIndex, Stack } from '../core/types';
 import { redactFor, HIDDEN_CARD_ID } from '../core/view';
 import { GameSession } from '../game-session.service';
+import { clearSoloGame, loadSoloGame, SavedSoloGame } from '../core/saved-game';
 import { OnlineMatchService } from '../online-match.service';
 import { attackReason, menuItemsFor, MenuItem, MenuTarget } from './menu-items';
 import { InspectPanelComponent } from './inspect-panel.component';
@@ -123,7 +124,14 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
     <ng-template #quickTpl>
       <button type="button" class="btn-play" (click)="quick({ type: 'draw', player: bottom(), count: 1 })">Draw 1</button>
       <button type="button" class="btn-play" (click)="quick({ type: 'unsuspendAll', player: bottom() })">Unsuspend all</button>
-      <button type="button" class="btn-play" (click)="quick({ type: 'hatch', player: bottom() })">Hatch</button>
+      <button
+        type="button"
+        class="btn-play"
+        (click)="quick({ type: 'hatch', player: bottom() })"
+        [disabled]="!!hatchReason()"
+        [title]="hatchReason() ?? 'Hatch an egg into your breeding area'">
+        Hatch
+      </button>
       <button type="button" class="btn-play" (click)="quick({ type: 'revealSecurity', player: bottom(), position: 'top' })">
         Reveal top security
       </button>
@@ -184,6 +192,22 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
         </ol>
       }
     </ng-template>
+
+    <!-- A solo game saved in this browser, offered when the table opens without a live game -->
+    @if (!state() && savedGame(); as saved) {
+      <div class="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="resume-title">
+        <div class="w-full max-w-sm rounded-xl border border-line bg-ink-1 p-5 text-center">
+          <h2 id="resume-title" class="m-0 font-display text-xl font-bold text-fg">Resume game?</h2>
+          <p class="mt-2 text-sm text-muted">
+            {{ saved.state.players[0].name }} vs {{ saved.state.players[1].name }}, turn {{ saved.state.turn }}, saved in this browser.
+          </p>
+          <div class="mt-4 flex flex-wrap justify-center gap-2">
+            <button type="button" class="btn-play btn-primary" (click)="resumeSaved()">Resume game</button>
+            <button type="button" class="btn-play" (click)="discardSaved()">Discard save</button>
+          </div>
+        </div>
+      </div>
+    }
 
     @if (state(); as s) {
       @if (outcome(); as out) {
@@ -259,13 +283,15 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
           class="fixed left-1/2 z-[465] flex max-w-[calc(100vw-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-accent bg-ink-1 p-2 text-xs text-fg shadow-xl"
           [ngClass]="compact() ? 'top-[3.75rem]' : 'top-16'"
           role="status">
-          @if (targetHint(); as hint) {
+          @if (compact()) {
+            <span>Tap a highlighted target ·</span>
+          } @else if (targetHint(); as hint) {
             <span>{{ hint }}</span>
           }
           @if (playerTargetable()) {
             <button type="button" class="btn-play btn-primary" (click)="onTargetPick(null)">Attack {{ s.players[other(t.owner)].name }}</button>
           }
-          <button type="button" class="btn-play" (click)="cancelAttack()">Cancel (Esc)</button>
+          <button type="button" class="btn-play" (click)="cancelAttack()">{{ compact() ? 'Cancel' : 'Cancel (Esc)' }}</button>
         </div>
       }
 
@@ -362,7 +388,7 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
                 [value]="nextMemory()"
                 (input)="nextMemory.set(toInt($any($event.target).value))" />
             </label>
-            <span class="text-muted">Positive = their side of the gauge, from -10 to 10.</span>
+            <span class="text-muted">{{ nextMemoryHint() }}</span>
             <div class="ml-auto flex gap-1.5">
               <button type="button" class="btn-play" (click)="endTurnOpen.set(false)">Cancel</button>
               <button type="submit" class="btn-play btn-primary">Pass turn</button>
@@ -421,7 +447,7 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
                 (menu)="openMenu($event.x, $event.y, $event.target)"
                 (preview)="onPreview($event)"
                 (pin)="pinTarget($event)"
-                (targetPick)="onTargetPick($event)" />
+                (targetPick)="onTargetPick($event)" (targetMiss)="onTargetMiss()" />
             }
 
             <div class="own-col">
@@ -490,7 +516,7 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
               (menu)="openMenu($event.x, $event.y, $event.target)"
               (preview)="onPreview($event)"
               (pin)="pinTarget($event)"
-              (targetPick)="onTargetPick($event)"
+              (targetPick)="onTargetPick($event)" (targetMiss)="onTargetMiss()"
               (dragHand)="dragHandUid.set($event)" />
             </div>
           </div>
@@ -583,7 +609,7 @@ function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack
               (menu)="openMenu($event.x, $event.y, $event.target)"
               (preview)="onPreview($event)"
               (pin)="pinTarget($event)"
-              (targetPick)="onTargetPick($event)" />
+              (targetPick)="onTargetPick($event)" (targetMiss)="onTargetMiss()" />
           </section>
         }
 
@@ -918,6 +944,8 @@ export class PlaymatComponent implements OnInit {
   protected readonly logSelected = signal<number | null>(null);
   /** The attack being aimed, or null. */
   private readonly targeting = signal<AttackPlan | null>(null);
+  /** A solo game saved in this browser, offered on open. Null once resumed or discarded. */
+  protected readonly savedGame = signal<SavedSoloGame | null>(null);
 
   /** Names for the reminder toasts and notices. */
   protected readonly names = computed<[string, string]>(() => {
@@ -1085,9 +1113,24 @@ export class PlaymatComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (!this.session.state()) {
-      void this.router.navigateByUrl('/play');
-    }
+    if (this.session.state()) return;
+    const saved = loadSoloGame();
+    if (saved) this.savedGame.set(saved);
+    else void this.router.navigateByUrl('/play');
+  }
+
+  /** Resumes the solo game saved in this browser. */
+  protected resumeSaved(): void {
+    const saved = this.savedGame();
+    if (!saved) return;
+    this.session.resumeSolo(saved.state);
+    this.savedGame.set(null);
+  }
+
+  protected discardSaved(): void {
+    clearSoloGame();
+    this.savedGame.set(null);
+    void this.router.navigateByUrl('/play');
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -1141,7 +1184,24 @@ export class PlaymatComponent implements OnInit {
 
   act(cmd: Command): void {
     this.closeMenu();
-    this.session.applyLocal(cmd);
+    const before = this.state()?.phase;
+    const accepted = this.session.applyLocal(cmd);
+    const breedingAction = cmd.type === 'hatch' || cmd.type === 'moveBreedingToBattle';
+    if (accepted && before === 'breeding' && breedingAction && this.state()?.phase === 'main') {
+      this.notice('Breeding phase done → Main phase', 'info');
+    }
+  }
+
+  /** Why Hatch cannot be used right now (assisted rules), or null when it can. */
+  protected hatchReason(): string | null {
+    const s = this.state();
+    if (!s || s.mode !== 'assisted' || this.force()) return null;
+    return assistedError(s, { type: 'hatch', player: this.bottom() });
+  }
+
+  /** A tap on something that is not a valid attack target. */
+  protected onTargetMiss(): void {
+    if (this.activeTarget()) this.notice('Not a valid target', 'error');
   }
 
   /** Quick action buttons. Same commands as the menus, one click. */
@@ -1260,9 +1320,35 @@ export class PlaymatComponent implements OnInit {
     this.act({ type: 'nextPhase', player: this.bottom() });
   }
 
+  /**
+   * Assisted: the memory rule is automatic, so End turn passes at once (the next player gets 3 on their side, or the
+   * gauge value that already sits there). Manual: opens the dialog, pre-filled from the gauge.
+   */
   toggleEndTurn(): void {
+    const s = this.state();
+    if (s?.mode === 'assisted') {
+      this.endTurnOpen.set(false);
+      this.act({ type: 'passTurn', player: this.bottom() });
+      return;
+    }
     this.endTurnOpen.update((open) => !open);
-    this.nextMemory.set(DEFAULT_NEXT_MEMORY);
+    this.nextMemory.set(this.suggestedNextMemory());
+  }
+
+  /** Manual pass: the next player's gauge value. When the gauge already sits on their side, that value stays; else 3. */
+  protected suggestedNextMemory(): number {
+    const s = this.state();
+    if (!s || s.memory >= 0) return DEFAULT_NEXT_MEMORY;
+    return Math.max(MEMORY_MIN, Math.min(MEMORY_MAX, -s.memory));
+  }
+
+  /** One line under the Manual pass dialog's value, explaining where the pre-filled number comes from. */
+  protected nextMemoryHint(): string {
+    const s = this.state();
+    if (!s) return '';
+    const next = s.activePlayer === 0 ? 1 : 0;
+    if (s.memory < 0) return `The gauge already sits on ${s.players[next].name}'s side at ${-s.memory}, so that value is pre-filled.`;
+    return `Pre-filled with ${DEFAULT_NEXT_MEMORY}: ${s.players[next].name} starts on their side of the gauge.`;
   }
 
   confirmEndTurn(): void {

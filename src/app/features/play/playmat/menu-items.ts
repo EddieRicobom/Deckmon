@@ -1,7 +1,7 @@
 import { Command } from '../core/commands';
 import { getStack, locateCard } from '../core/game';
 import { cardLabel } from '../core/labels';
-import { cardInfo } from '../core/rules/card-data';
+import { CardKind, cardInfo } from '../core/rules/card-data';
 import { digivolveCost } from '../core/rules/helpers';
 import { assistedError } from '../core/rules/validate';
 import { GameState, PlayerIndex, PileZone, StackZone, Zone } from '../core/types';
@@ -34,7 +34,7 @@ const DP_STEPS = [1000, -1000, 2000, -2000];
  * In assisted mode every command item carries the engine's reason when it is not allowed (Force lifts the rules).
  */
 export function menuItemsFor(target: MenuTarget, state: GameState, force = false): MenuItem[] {
-  return explain(buildItems(target, state), state, force);
+  return explain(buildItems(target, state, state.mode === 'assisted' && !force), state, force);
 }
 
 /** Adds the engine's reason to every command item that the assisted rules refuse. */
@@ -53,7 +53,11 @@ export function attackReason(state: GameState, owner: PlayerIndex, stackId: stri
   return reason ?? undefined;
 }
 
-function buildItems(target: MenuTarget, state: GameState): MenuItem[] {
+/**
+ * `rules` is true in assisted mode without Force. Then the hand menu only lists actions that fit the card type and,
+ * for digivolve, only the real targets. Type-appropriate actions that are not legal right now stay, disabled with a reason.
+ */
+function buildItems(target: MenuTarget, state: GameState, rules = false): MenuItem[] {
   const p = state.players[target.owner];
   const owner = target.owner;
 
@@ -146,18 +150,27 @@ function buildItems(target: MenuTarget, state: GameState): MenuItem[] {
       const info = handCard ? cardInfo(handCard.cardId) : undefined;
       const playCost = info ? ` (cost ${info.playCost})` : '';
       const digivolveTargets = [...(p.breeding ? [p.breeding] : []), ...p.battle];
-      for (const stack of digivolveTargets) {
-        const top = stack.cards[stack.cards.length - 1]?.cardId ?? '';
-        const cost = info ? digivolveCost(stack, info) : null;
-        items.push({
-          label: `Digivolve onto ${cardLabel(top)}${cost !== null ? ` (cost ${cost})` : ''}`,
-          cmd: { type: 'digivolve', player: owner, handUid: uid, onto: stack.stackId },
-        });
+      // Assisted: only a Digimon in hand can digivolve, and only onto a stack it fits. Other targets are not listed.
+      if (!rules || info?.kind === 'digimon') {
+        for (const stack of digivolveTargets) {
+          const top = stack.cards[stack.cards.length - 1]?.cardId ?? '';
+          const cost = info ? digivolveCost(stack, info) : null;
+          if (rules && cost === null) continue;
+          items.push({
+            label: `Digivolve onto ${cardLabel(top)}${cost !== null ? ` (cost ${cost})` : ''}`,
+            cmd: { type: 'digivolve', player: owner, handUid: uid, onto: stack.stackId },
+          });
+        }
       }
+      // Assisted: a play destination is listed only when the card type can go there.
+      const playTo = (to: 'battle' | 'tamer' | 'option', label: string): MenuItem[] => {
+        if (rules && info && !playableTo(info.kind, to)) return [];
+        return [{ label: `${label}${playCost}`, cmd: { type: 'playFromHand', player: owner, uid, to } }];
+      };
       items.push(
-        { label: `Play to battle area${playCost}`, cmd: { type: 'playFromHand', player: owner, uid, to: 'battle' } },
-        { label: `Play to tamer area${playCost}`, cmd: { type: 'playFromHand', player: owner, uid, to: 'tamer' } },
-        { label: `Play to option area${playCost}`, cmd: { type: 'playFromHand', player: owner, uid, to: 'option' } },
+        ...playTo('battle', 'Play to battle area'),
+        ...playTo('tamer', 'Play to tamer area'),
+        ...playTo('option', 'Play to option area'),
         { label: 'Move to breeding', cmd: { type: 'moveCard', player: owner, uid, to: 'breeding' } },
         { label: 'Reveal', cmd: { type: 'moveCard', player: owner, uid, to: 'reveal' }, separator: true },
         { label: 'Put on top of deck', cmd: { type: 'moveCard', player: owner, uid, to: 'deck', position: 'top' } },
@@ -194,4 +207,12 @@ function buildItems(target: MenuTarget, state: GameState): MenuItem[] {
       break;
   }
   return items;
+}
+
+/** Card kinds that can be played to each area from hand (assisted rules). Eggs are never played from hand. */
+function playableTo(kind: CardKind, to: 'battle' | 'tamer' | 'option'): boolean {
+  if (kind === 'egg') return false;
+  if (to === 'battle') return kind === 'digimon';
+  if (to === 'tamer') return kind === 'tamer';
+  return kind === 'option';
 }

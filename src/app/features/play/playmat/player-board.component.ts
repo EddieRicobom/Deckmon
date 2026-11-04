@@ -553,6 +553,8 @@ export class PlayerBoardComponent {
   @Output() readonly pin = new EventEmitter<MenuTarget>();
   /** Target chosen while targeting: a stack id, or null for the player. */
   @Output() readonly targetPick = new EventEmitter<string | null>();
+  /** A tap while targeting that is not a valid target. The playmat says so. */
+  @Output() readonly targetMiss = new EventEmitter<void>();
   /** A hand card drag started (uid) or ended (null). */
   @Output() readonly dragHand = new EventEmitter<string | null>();
 
@@ -609,7 +611,9 @@ export class PlayerBoardComponent {
 
   /** Attack target click on the player (security pile or name). Ignored unless this board can be attacked. */
   pickPlayer(): void {
-    if (this.targeting() && this.playerTargetable()) this.targetPick.emit(null);
+    if (!this.targeting()) return;
+    if (this.playerTargetable()) this.targetPick.emit(null);
+    else this.targetMiss.emit();
   }
 
   /**
@@ -620,7 +624,8 @@ export class PlayerBoardComponent {
     if (this.targeting()) {
       event.stopPropagation();
       if (target.kind === 'stack' && this.targetStackIds().has(target.stackId)) this.targetPick.emit(target.stackId);
-      if (target.kind === 'card' && target.zone === 'security' && this.playerTargetable()) this.targetPick.emit(null);
+      else if (target.kind === 'card' && target.zone === 'security' && this.playerTargetable()) this.targetPick.emit(null);
+      else this.targetMiss.emit();
       return;
     }
     if (this.longPressed) {

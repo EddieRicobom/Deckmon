@@ -5,6 +5,7 @@ import { DigimonCardStore } from '../../store/digimon-card.store';
 import { SaveStore } from '../../store/save.store';
 import { DeckListEntry } from './core/game';
 import { GameSession } from './game-session.service';
+import { loadSoloGame } from './core/saved-game';
 import { deckLabel, randomStarterDeck, toDeckList } from './deck-source';
 import { OnlinePanelComponent } from './online-panel.component';
 
@@ -31,6 +32,19 @@ const STARTER_OPPONENT = 'starter';
             <span class="font-semibold">Resume current game</span>
             <span class="text-sm text-muted">Turn {{ session.state()!.turn }} <i class="pi pi-arrow-right"></i></span>
           </a>
+        }
+
+        @if (!session.state() && savedGame(); as saved) {
+          <button
+            type="button"
+            class="flex items-center justify-between gap-3 rounded-xl border border-accent bg-ink-1 p-4 text-left text-fg hover:bg-ink-2"
+            (click)="resumeLast()">
+            <span class="font-semibold">Resume last game</span>
+            <span class="text-sm text-muted">
+              {{ saved.state.players[0].name }} vs {{ saved.state.players[1].name }}, turn {{ saved.state.turn }}
+              <i class="pi pi-arrow-right"></i>
+            </span>
+          </button>
         }
 
         <section class="flex flex-col gap-4 rounded-xl border border-line bg-ink-1 p-4">
@@ -137,6 +151,8 @@ export class PlayLobbyComponent {
   /** Solo rules choice. Assisted is the default. */
   protected readonly rules = signal<'assisted' | 'manual'>('assisted');
   protected readonly error = signal<string | null>(null);
+  /** A solo game saved in this browser, if any. Read once when the lobby opens. */
+  protected readonly savedGame = signal(loadSoloGame());
   /** The selected deck, falling back to the first saved deck so the select and the start action agree. */
   protected readonly myDeck = computed(() => this.decks().find((d) => d.id === this.myDeckId()) ?? this.decks()[0] ?? null);
 
@@ -155,6 +171,17 @@ export class PlayLobbyComponent {
 
   protected cardTotal(cards: { count: number }[]): number {
     return cards.reduce((n, c) => n + c.count, 0);
+  }
+
+  /** Resumes the saved solo game and opens the table. */
+  resumeLast(): void {
+    const saved = loadSoloGame();
+    if (!saved) {
+      this.savedGame.set(null);
+      return;
+    }
+    this.session.resumeSolo(saved.state);
+    void this.router.navigateByUrl('/play/table');
   }
 
   startSolo(): void {
