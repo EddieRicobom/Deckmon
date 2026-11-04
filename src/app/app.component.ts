@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, effect, inject, PLATFORM_ID, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, PLATFORM_ID, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { isPlatformBrowser } from '@angular/common';
-import { RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filterCards } from '@functions';
 import { AdvancedSearchService } from './services/advanced-search.service';
 import { CardMarketService } from './services/card-market.service';
@@ -12,7 +13,7 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { DrawerModule } from 'primeng/drawer';
 import { OverlayZoneFixDirective } from '@directives';
 import { ToastModule } from 'primeng/toast';
-import { first } from 'rxjs';
+import { filter, first, map } from 'rxjs';
 import { DialogComponent } from './features/shared/dialog.component';
 import { NavLinksComponent } from './features/shared/navbar/nav-links.component';
 import { NavbarComponent } from './features/shared/navbar/navbar.component';
@@ -21,12 +22,13 @@ import { NavbarComponent } from './features/shared/navbar/navbar.component';
   selector: 'digimon-root',
   template: `
     <div class="flex flex-col">
-      <digimon-navbar (openSideNav)="sideNav = true"></digimon-navbar>
+      <digimon-navbar (openSideNav)="sideNav = true" [hideMobileNav]="onTable()"></digimon-navbar>
 
       @if (saveLoaded()) {
         <div
-          class="min-h-[calc(var(--app-vh)-3.5rem)] md:min-h-[calc(var(--app-vh)-5rem)] w-[100vw] pb-16 md:pb-0
-        flex justify-center items-center">
+          class="min-h-[calc(var(--app-vh)-3.5rem)] md:min-h-[calc(var(--app-vh)-5rem)] w-[100vw] md:pb-0
+        flex justify-center items-center"
+          [class.pb-16]="!onTable()">
           <router-outlet></router-outlet>
         </div>
       } @else {
@@ -77,6 +79,17 @@ export class AppComponent {
   saveLoaded = signal(!this.isBrowser);
 
   sideNav = false;
+
+  private readonly router = inject(Router);
+  /** The play table takes the whole screen: no phone bottom nav, so no bottom padding either. */
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      map((e) => e.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+  protected readonly onTable = computed(() => this.currentUrl().startsWith('/play/table'));
 
   cardSet = '';
   settings: ISettings | null = null;

@@ -87,7 +87,7 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
   template: `
     <section
       cdkDropListGroup
-      class="flex flex-1 flex-col gap-2 rounded-xl border bg-ink-1 p-2 transition-colors md:p-3"
+      class="board-section flex flex-1 flex-col gap-2 rounded-xl border bg-ink-1 p-2 transition-colors md:p-3"
       [class.border-accent]="active()"
       [class.border-line]="!active()">
       <header class="flex items-center justify-between gap-2 text-xs text-muted" [class.flex-row-reverse]="mirrored()">
@@ -298,7 +298,7 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         [cdkDropListSortingDisabled]="true"
         [cdkDropListData]="dropData('hand')"
         (cdkDropListDropped)="onDrop($event)"
-        class="hand-row flex min-h-[calc(var(--cw)*1.45)] items-end justify-center overflow-visible pb-1">
+        class="hand-row flex items-end justify-center overflow-visible">
         @for (c of player().hand; track c.uid; let i = $index) {
           <div
             cdkDrag
@@ -348,11 +348,20 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
       :host {
         --cw: clamp(1.9rem, min(5.6vh, 8vw), 5.25rem);
         display: flex;
-        min-height: auto;
+        min-height: 0;
         flex: 1 1 auto;
       }
       :host section {
         width: 100%;
+      }
+      /* Hand row reserves its full height: cards, the hover lift (in the top padding) and nothing below. */
+      .hand-row {
+        box-sizing: border-box;
+        height: calc(var(--cw) * 1.4 + 1rem);
+        padding: 0.75rem 0.25rem 0.25rem;
+      }
+      .hand-row > * {
+        height: calc(var(--cw) * 1.4);
       }
       .zone-label {
         font-size: 0.6rem;
@@ -400,19 +409,30 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
       .cdk-drop-list-dragging .cdk-drag {
         transition: transform 150ms;
       }
-      /* Phone: battle cards scroll sideways with snap points; the hand is a scrollable tray. */
-      @media (max-width: 767px) {
+      /*
+       * Phone portrait and short landscape: piles are small (44px wide, 62px tall), battle cards are wide enough to
+       * read their DP, the hand is a scrollable tray at the bottom. The board area scrolls if it still runs out of room.
+       */
+      @media (max-width: 767px), (max-height: 499px) {
+        :host {
+          --cw: 2.75rem;
+        }
+        .board-section {
+          min-height: 0;
+          overflow-y: auto;
+        }
         .battle-row {
           flex-wrap: nowrap;
           overflow-x: auto;
           scroll-snap-type: x mandatory;
-          --cw: 4.6rem;
+          --cw: 6.25rem;
         }
         .battle-row > * {
           scroll-snap-align: start;
           flex-shrink: 0;
         }
         .hand-row {
+          --cw: 5rem;
           justify-content: flex-start;
           overflow-x: auto;
           scroll-snap-type: x proximity;
@@ -420,6 +440,18 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         .hand-row > * {
           scroll-snap-align: center;
           flex-shrink: 0;
+        }
+      }
+      /* Short landscape: scale every size to the height so a phone on its side still fits the board. */
+      @media (max-height: 499px) {
+        :host {
+          --cw: min(2.75rem, 10.5vh);
+        }
+        .battle-row {
+          --cw: min(6.25rem, 19vh);
+        }
+        .hand-row {
+          --cw: min(5rem, 15vh);
         }
       }
     `,

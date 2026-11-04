@@ -1,4 +1,4 @@
-import { NgClass } from '@angular/common';
+import { NgClass, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
@@ -55,12 +55,89 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
   selector: 'digimon-playmat',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [NgClass, RouterLink, PlayerBoardComponent, OnlineBarComponent, InspectPanelComponent],
+  imports: [NgClass, NgTemplateOutlet, RouterLink, PlayerBoardComponent, OnlineBarComponent, InspectPanelComponent],
   template: `
+    <!-- Shared fragments, used inline on desktop and inside the "more" sheet on phones -->
+    <ng-template #phasesTpl>
+      @if (state(); as s) {
+        @for (ph of phases; track ph) {
+          <span
+            class="rounded px-2 py-0.5 text-xs"
+            [class.bg-accent]="ph === s.phase"
+            [class.text-accent-ink]="ph === s.phase"
+            [class.font-bold]="ph === s.phase"
+            [class.bg-ink-2]="ph !== s.phase"
+            [class.text-muted]="ph !== s.phase"
+            >{{ phaseLabel(ph) }}</span
+          >
+        }
+      }
+    </ng-template>
+    <ng-template #quickTpl>
+      <button type="button" class="btn-play" (click)="quick({ type: 'draw', player: bottom(), count: 1 })">Draw 1</button>
+      <button type="button" class="btn-play" (click)="quick({ type: 'unsuspendAll', player: bottom() })">Unsuspend all</button>
+      <button type="button" class="btn-play" (click)="quick({ type: 'hatch', player: bottom() })">Hatch</button>
+      <button type="button" class="btn-play" (click)="quick({ type: 'revealSecurity', player: bottom(), position: 'top' })">
+        Reveal top security
+      </button>
+      @if (state()?.turn === 1) {
+        <button type="button" class="btn-play" (click)="quick({ type: 'mulligan', player: bottom() })">Mulligan</button>
+      }
+      <button type="button" class="btn-play" (click)="quick({ type: 'shuffleDeck', player: bottom(), zone: 'deck' })">Shuffle deck</button>
+      <span class="mx-1 h-4 w-px bg-line" aria-hidden="true"></span>
+      <button type="button" class="btn-play" (click)="quick({ type: 'flipCoin', player: bottom() })">Flip coin</button>
+      <button type="button" class="btn-play" (click)="quick({ type: 'rollDice', player: bottom(), sides: 6 })">Roll d6</button>
+    </ng-template>
+    <ng-template #payTpl>
+      <span class="text-muted">Active pays</span>
+      @for (n of payAmounts; track n) {
+        <button type="button" class="btn-play px-2 py-0" (click)="changeMemory(-n)">Pay {{ n }}</button>
+      }
+      <span class="ml-2 text-muted">Gains</span>
+      @for (n of gainAmounts; track n) {
+        <button type="button" class="btn-play px-2 py-0" (click)="changeMemory(n)">Gain {{ n }}</button>
+      }
+    </ng-template>
+
     @if (state(); as s) {
       <div
-        class="relative mx-auto flex h-[calc(var(--app-vh)-7.5rem)] w-full max-w-[120rem] flex-col gap-2 overflow-x-hidden overflow-y-auto px-2 py-2 md:h-[calc(var(--app-vh)-5rem)] md:px-4"
-        [class.pb-56]="pinned() && !wide()">
+        class="relative mx-auto flex h-[calc(var(--app-vh)-3.5rem)] w-full max-w-[100rem] flex-col gap-2 overflow-x-hidden px-2 py-2 md:h-[calc(var(--app-vh)-5rem)] md:px-4"
+        [class.overflow-hidden]="compact()"
+        [class.overflow-y-auto]="!compact()"
+        [class.pb-56]="pinned() && !wide() && !compact()">
+        @if (compact()) {
+          <!-- Phone and short landscape: one compact row. Everything else lives in the "more" sheet. -->
+          <header class="flex h-[3.25rem] shrink-0 items-center gap-1.5 rounded-lg border border-line bg-ink-1 px-2">
+            <span class="font-display text-sm font-bold text-fg">T{{ s.turn }}</span>
+            <button
+              type="button"
+              class="btn-play min-w-0 truncate"
+              (click)="nextPhase()"
+              [disabled]="s.phase === 'end'"
+              [attr.aria-label]="'Next phase, currently ' + phaseLabel(s.phase)">
+              {{ phaseLabel(s.phase) }}
+            </button>
+            <button
+              type="button"
+              class="btn-play btn-primary"
+              [class.animate-pulse]="s.memory < 0"
+              (click)="toggleEndTurn()"
+              [attr.aria-expanded]="endTurnOpen()">
+              End turn
+            </button>
+            <button type="button" class="btn-play px-2.5" (click)="undo()" [disabled]="!session.canUndo()" aria-label="Undo" title="Undo (Ctrl+Z)">
+              <i class="pi pi-undo"></i>
+            </button>
+            <button
+              type="button"
+              class="btn-play ml-auto px-2.5"
+              (click)="moreOpen.set(true)"
+              [attr.aria-expanded]="moreOpen()"
+              aria-label="More actions">
+              <i class="pi pi-ellipsis-h"></i>
+            </button>
+          </header>
+        } @else {
         <!-- Top bar -->
         <header class="flex flex-wrap items-center gap-2 text-sm">
           <span class="font-display text-lg font-semibold text-fg">Turn {{ s.turn }}</span>
@@ -68,17 +145,7 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
             >Active: <b class="text-fg">{{ s.players[s.activePlayer].name }}</b></span
           >
           <nav class="flex flex-wrap gap-1" aria-label="Phases">
-            @for (ph of phases; track ph) {
-              <span
-                class="rounded px-2 py-0.5 text-xs"
-                [class.bg-accent]="ph === s.phase"
-                [class.text-accent-ink]="ph === s.phase"
-                [class.font-bold]="ph === s.phase"
-                [class.bg-ink-2]="ph !== s.phase"
-                [class.text-muted]="ph !== s.phase"
-                >{{ phaseLabel(ph) }}</span
-              >
-            }
+            <ng-container *ngTemplateOutlet="phasesTpl" />
           </nav>
           <div class="ml-auto flex flex-wrap items-center gap-1.5">
             <button type="button" class="btn-play" (click)="nextPhase()" [disabled]="s.phase === 'end'">Next phase</button>
@@ -93,8 +160,11 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
             <button type="button" class="btn-play" (click)="toLobby()">Lobby</button>
           </div>
         </header>
+        }
 
-        <digimon-online-bar />
+        @if (!compact()) {
+          <digimon-online-bar />
+        }
 
         @if (endTurnOpen()) {
           <form
@@ -120,23 +190,13 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           </form>
         }
 
-        <!-- Quick actions for your board -->
-        <nav class="flex flex-wrap items-center gap-1.5" aria-label="Quick actions">
-          <span class="mr-1 text-[10px] uppercase tracking-wide text-muted">Quick</span>
-          <button type="button" class="btn-play" (click)="quick({ type: 'draw', player: bottom(), count: 1 })">Draw 1</button>
-          <button type="button" class="btn-play" (click)="quick({ type: 'unsuspendAll', player: bottom() })">Unsuspend all</button>
-          <button type="button" class="btn-play" (click)="quick({ type: 'hatch', player: bottom() })">Hatch</button>
-          <button type="button" class="btn-play" (click)="quick({ type: 'revealSecurity', player: bottom(), position: 'top' })">
-            Reveal top security
-          </button>
-          @if (s.turn === 1) {
-            <button type="button" class="btn-play" (click)="quick({ type: 'mulligan', player: bottom() })">Mulligan</button>
-          }
-          <button type="button" class="btn-play" (click)="quick({ type: 'shuffleDeck', player: bottom(), zone: 'deck' })">Shuffle deck</button>
-          <span class="mx-1 h-4 w-px bg-line" aria-hidden="true"></span>
-          <button type="button" class="btn-play" (click)="quick({ type: 'flipCoin', player: bottom() })">Flip coin</button>
-          <button type="button" class="btn-play" (click)="quick({ type: 'rollDice', player: bottom(), sides: 6 })">Roll d6</button>
-        </nav>
+        <!-- Quick actions for your board (phones: in the "more" sheet) -->
+        @if (!compact()) {
+          <nav class="flex flex-wrap items-center gap-1.5 md:flex-nowrap" aria-label="Quick actions">
+            <span class="mr-1 text-[10px] uppercase tracking-wide text-muted">Quick</span>
+            <ng-container *ngTemplateOutlet="quickTpl" />
+          </nav>
+        }
 
         @if (session.lastError(); as err) {
           <button
@@ -148,25 +208,25 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
         }
 
         <div class="flex min-h-0 flex-1 gap-3">
-          <div class="flex min-w-0 flex-1 flex-col gap-2">
+          <div class="main-col flex min-w-0 flex-1 flex-col gap-2">
             <!-- Opponent: full board, or a compact strip on phones (tap to open the full board) -->
             @if (compact()) {
               <button
                 type="button"
-                class="flex w-full items-center gap-2 overflow-hidden rounded-xl border border-line bg-ink-1 p-2 text-left"
+                class="opp-strip flex w-full items-center gap-2 overflow-hidden rounded-xl border border-line bg-ink-1 p-1.5 text-left"
                 (click)="opponentOpen.set(true)"
                 [attr.aria-label]="'Open ' + s.players[top()].name + ' board'">
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-xs font-semibold text-fg">{{ s.players[top()].name }}</span>
-                  <span class="block font-mono text-[10px] text-muted">
+                  <span class="block truncate font-mono text-[10px] text-muted">
                     Hand {{ display()!.players[top()].hand.length }} · Deck {{ display()!.players[top()].deck.length }} · Sec
                     {{ s.players[top()].security.length }} · Trash {{ s.players[top()].trash.length }}
                   </span>
                 </span>
-                <span class="flex shrink-0 items-center gap-1 overflow-x-auto">
+                <span class="thumbs flex shrink-0 items-center gap-1 overflow-x-auto">
                   @for (st of display()!.players[top()].battle; track st.stackId) {
-                    <span class="relative block w-9 shrink-0">
-                      <img [src]="thumb(st)" alt="" class="block w-full rounded-[4%]" />
+                    <span class="relative block h-10 shrink-0">
+                      <img [src]="thumb(st)" alt="" class="block h-full w-auto rounded-[4%] aspect-[63/88]" />
                       @if (dpOf(st); as dp) {
                         <span class="absolute bottom-0 right-0 rounded bg-black/80 px-0.5 font-mono text-[9px] font-bold text-white">{{ dp }}</span>
                       }
@@ -189,15 +249,19 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                 (pin)="pinTarget($event)" />
             }
 
+            <div class="own-col">
             <!-- Memory gauge -->
-            <div class="flex flex-col gap-1 px-1">
+            <div class="flex flex-col gap-1 px-1" [class.gauge-compact]="compact()">
               <div class="flex items-center gap-2">
-                <span class="w-16 shrink-0 truncate text-right text-[10px] uppercase tracking-wide text-muted sm:w-20">{{
-                  s.players[top()].name
-                }}</span>
+                <span
+                  class="w-16 shrink-0 truncate text-right text-[10px] uppercase tracking-wide text-muted sm:w-20"
+                  [class.hidden]="compact()"
+                  >{{ s.players[top()].name }}</span
+                >
                 <button type="button" class="btn-play px-2" (click)="changeMemory(-1)" aria-label="Memory minus one">−</button>
                 <div
-                  class="relative flex h-7 min-w-0 flex-1 overflow-hidden rounded-full border border-line bg-ink-2"
+                  class="track relative flex min-w-0 flex-1 overflow-hidden rounded-full border border-line bg-ink-2"
+                  [class.h-7]="!compact()"
                   role="group"
                   aria-label="Memory gauge">
                   @for (v of memoryValues; track v) {
@@ -210,32 +274,31 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                       [attr.aria-pressed]="v === s.memory"
                       (click)="setMemory(v)">
                       @if (v % 5 === 0) {
-                        <span class="pointer-events-none">{{ v > 0 ? '+' + v : v }}</span>
+                        <span class="tick pointer-events-none">{{ v > 0 ? '+' + v : v }}</span>
                       }
                     </button>
                   }
                   <span
-                    class="pointer-events-none absolute top-1/2 flex h-5 min-w-[1.75rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-accent px-1 font-mono text-[11px] font-bold text-accent-ink shadow"
+                    class="token pointer-events-none absolute top-1/2 flex h-5 min-w-[1.75rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-accent px-1 font-mono text-[11px] font-bold text-accent-ink shadow"
                     [style.left.%]="tokenPercent(s.memory)">
                     {{ s.memory > 0 ? '+' + s.memory : s.memory }}
                   </span>
                 </div>
                 <button type="button" class="btn-play px-2" (click)="changeMemory(1)" aria-label="Memory plus one">+</button>
-                <span class="w-16 shrink-0 truncate text-[10px] uppercase tracking-wide text-muted sm:w-20">{{ s.players[bottom()].name }}</span>
+                <span
+                  class="w-16 shrink-0 truncate text-[10px] uppercase tracking-wide text-muted sm:w-20"
+                  [class.hidden]="compact()"
+                  >{{ s.players[bottom()].name }}</span
+                >
               </div>
-              <div class="flex flex-wrap items-center gap-1.5 pl-16 text-[11px] sm:pl-20">
-                <span class="text-muted">Active pays</span>
-                @for (n of payAmounts; track n) {
-                  <button type="button" class="btn-play px-2 py-0" (click)="changeMemory(-n)">Pay {{ n }}</button>
-                }
-                <span class="ml-2 text-muted">Gains</span>
-                @for (n of gainAmounts; track n) {
-                  <button type="button" class="btn-play px-2 py-0" (click)="changeMemory(n)">Gain {{ n }}</button>
-                }
-                @if (s.memory < 0 && !endTurnOpen()) {
-                  <button type="button" class="btn-play btn-hint" (click)="toggleEndTurn()">Memory crossed to their side: pass turn?</button>
-                }
-              </div>
+              @if (!compact()) {
+                <div class="flex flex-wrap items-center gap-1.5 pl-16 text-[11px] sm:pl-20 md:flex-nowrap">
+                  <ng-container *ngTemplateOutlet="payTpl" />
+                  @if (s.memory < 0 && !endTurnOpen()) {
+                    <button type="button" class="btn-play btn-hint" (click)="toggleEndTurn()">Memory crossed to their side: pass turn?</button>
+                  }
+                </div>
+              }
             </div>
 
             <!-- You (bottom) -->
@@ -248,20 +311,29 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               (menu)="openMenu($event.x, $event.y, $event.target)"
               (preview)="onPreview($event)"
               (pin)="pinTarget($event)" />
+            </div>
           </div>
 
-          <!-- Wide screens: pinned card above the log, in the side column -->
-          @if (wide() && pinnedInfo(); as pin) {
-            <aside class="flex w-[22rem] shrink-0 flex-col gap-2 overflow-hidden rounded-xl border border-line bg-ink-1 p-3 text-xs">
-              <div class="min-h-0 flex-[3] overflow-y-auto pr-1">
-                <digimon-inspect-panel
-                  [target]="pin.target"
-                  [state]="pin.state"
-                  [editable]="canEdit(pin.target.owner)"
-                  (issue)="act($event)"
-                  (closed)="unpin()" />
-              </div>
-              <div class="flex min-h-0 flex-[2] flex-col gap-2 border-t border-line pt-2">
+          <!-- Wide screens: side column with the pinned card on top and the log below -->
+          @if (wide()) {
+            <aside class="flex w-[21rem] shrink-0 flex-col gap-2 overflow-hidden rounded-xl border border-line bg-ink-1 p-3 text-xs">
+              @if (pinnedInfo(); as pin) {
+                <div class="min-h-0 flex-[3] overflow-y-auto pr-1">
+                  <digimon-inspect-panel
+                    [target]="pin.target"
+                    [state]="pin.state"
+                    [editable]="canEdit(pin.target.owner)"
+                    (issue)="act($event)"
+                    (closed)="unpin()" />
+                </div>
+              }
+              <div
+                class="flex min-h-0 flex-col gap-2"
+                [ngClass]="pinnedInfo() ? 'flex-[2] border-t border-line pt-2' : 'flex-1'">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold text-fg">Log</span>
+                  <span class="text-muted">{{ s.log.length }} entries</span>
+                </div>
                 <ol class="m-0 flex min-h-0 flex-1 list-none flex-col-reverse gap-1 overflow-y-auto p-0">
                   @for (entry of s.log; track entry.seq) {
                     <li class="border-b border-line/50 pb-1 text-muted">
@@ -273,10 +345,10 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               </div>
             </aside>
           } @else {
-            <!-- Log: side panel on large screens, drawer otherwise -->
+            <!-- Tablet and phone: the log is a drawer -->
             <aside
               class="flex w-64 shrink-0 flex-col gap-2 rounded-xl border border-line bg-ink-1 p-2 text-xs"
-              [ngClass]="logOpen() ? 'fixed bottom-2 right-2 top-2 z-[400] w-72' : 'hidden lg:flex'">
+              [ngClass]="logOpen() ? 'fixed bottom-2 right-2 top-2 z-[400] w-72' : 'hidden'">
               <div class="flex items-center justify-between">
                 <span class="font-semibold text-fg">Log</span>
                 <span class="text-muted">{{ s.log.length }} entries</span>
@@ -340,6 +412,40 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           </section>
         }
 
+        <!-- Phone and short landscape: phases, quick actions, memory, view, log, lobby and PvP chat / resign -->
+        @if (compact() && moreOpen()) {
+          <div class="fixed inset-0 z-[455] bg-black/50" role="presentation" (click)="moreOpen.set(false)"></div>
+          <section
+            class="fixed inset-x-0 bottom-0 z-[456] flex max-h-[85vh] flex-col gap-3 overflow-y-auto rounded-t-2xl border-t border-line bg-ink-1 p-3 shadow-2xl"
+            aria-label="More actions">
+            <div class="mx-auto h-1 w-10 rounded-full bg-line" aria-hidden="true"></div>
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-fg">Turn {{ s.turn }} · {{ s.players[s.activePlayer].name }} active</span>
+              <button type="button" class="btn-play" (click)="moreOpen.set(false)">Close</button>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <span class="sheet-label">Phase</span>
+              <div class="flex flex-wrap gap-1"><ng-container *ngTemplateOutlet="phasesTpl" /></div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <span class="sheet-label">Quick</span>
+              <div class="flex flex-wrap gap-1.5"><ng-container *ngTemplateOutlet="quickTpl" /></div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <span class="sheet-label">Memory</span>
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px]"><ng-container *ngTemplateOutlet="payTpl" /></div>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" class="btn-play" (click)="toggleShowAll()" [attr.aria-pressed]="showAll()">
+                {{ showAll() ? 'Hide opponent info' : 'Show all cards' }}
+              </button>
+              <button type="button" class="btn-play" (click)="logOpen.set(true); moreOpen.set(false)">Log</button>
+              <button type="button" class="btn-play" (click)="toLobby()">Lobby</button>
+            </div>
+            <digimon-online-bar />
+          </section>
+        }
+
         <!-- Context menu -->
         @if (menu(); as m) {
           <div class="fixed inset-0 z-[600]" (click)="closeMenu()" (contextmenu)="$event.preventDefault(); closeMenu()" role="presentation"></div>
@@ -380,8 +486,48 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
   `,
   styles: [
     `
+      /* Full width: the app shell centres its outlet in a flex row, which would otherwise shrink the table to its content. */
       :host {
         display: block;
+        width: 100%;
+        min-width: 0;
+      }
+      .main-col {
+        min-height: 0;
+      }
+      .own-col {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+        min-height: 0;
+      }
+      .sheet-label {
+        font-size: 0.6rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--dc-muted, #94a3b8);
+      }
+      /* Compact gauge: one row, the number is the thing to read. */
+      .gauge-compact .track {
+        height: 2.25rem;
+      }
+      .gauge-compact .tick {
+        display: none;
+      }
+      .gauge-compact .token {
+        height: 1.75rem;
+        min-width: 2.75rem;
+        font-size: 0.9rem;
+      }
+      /* Opponent strip: one line of counts plus battle thumbnails, 56px tall on a phone. */
+      .opp-strip {
+        height: 3.5rem;
+      }
+      .opp-strip .thumbs img {
+        aspect-ratio: 63 / 88;
       }
       .btn-play {
         display: inline-flex;
@@ -419,6 +565,23 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           min-height: 2.5rem;
         }
       }
+      /* Short landscape: opponent strip becomes a left column (about 30% wide), own board takes the rest. */
+      @media (max-height: 499px) {
+        .main-col {
+          flex-direction: row;
+          gap: 0.5rem;
+        }
+        .opp-strip {
+          width: 30%;
+          height: auto;
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .opp-strip .thumbs {
+          flex-wrap: wrap;
+          overflow: hidden;
+        }
+      }
     `,
   ],
 })
@@ -440,6 +603,7 @@ export class PlaymatComponent implements OnInit {
   protected readonly top = computed<PlayerIndex>(() => (this.bottom() === 0 ? 1 : 0));
   protected readonly showAll = signal(false);
   protected readonly logOpen = signal(false);
+  protected readonly moreOpen = signal(false);
   protected readonly opponentOpen = signal(false);
   protected readonly menu = signal<OpenMenu | null>(null);
 
@@ -516,6 +680,7 @@ export class PlaymatComponent implements OnInit {
       this.unpin();
       this.endTurnOpen.set(false);
       this.opponentOpen.set(false);
+      this.moreOpen.set(false);
       return;
     }
     if (this.isTypingTarget(event.target)) return;
@@ -555,6 +720,7 @@ export class PlaymatComponent implements OnInit {
 
   /** Quick action buttons. Same commands as the menus, one click. */
   quick(cmd: Command): void {
+    this.moreOpen.set(false);
     this.act(cmd);
   }
 

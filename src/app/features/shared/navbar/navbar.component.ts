@@ -1,5 +1,5 @@
 import { NgClass } from '@angular/common';
-import { Component, EventEmitter, Output } from '@angular/core';
+import { Component, EventEmitter, Output, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import { GlobalSearchComponent } from './global-search.component';
@@ -19,7 +19,7 @@ import { NavLinksComponent } from './nav-links.component';
       <digimon-global-search class="ml-auto"></digimon-global-search>
     </nav>
 
-    <nav aria-label="Main" class="md:hidden fixed bottom-0 inset-x-0 z-[400] h-16 flex bg-ink-1 border-t border-line">
+    <nav aria-label="Main" [class.hidden]="hideMobileNav()" class="md:hidden fixed bottom-0 inset-x-0 z-[400] h-16 flex bg-ink-1 border-t border-line">
       @for (link of mobileLinks; track link.url) {
         <a
           [routerLink]="link.url"
@@ -43,6 +43,8 @@ import { NavLinksComponent } from './nav-links.component';
 })
 export class NavbarComponent {
   @Output() openSideNav = new EventEmitter<boolean>();
+  /** The play table hides the phone bottom nav: it needs the full height, and its Lobby button leads back. */
+  readonly hideMobileNav = input(false);
   protected readonly appUrl = environment.appUrl;
   protected readonly mobileLinks = [
     { url: '/cards', label: 'Cards', icon: 'pi-search' },
