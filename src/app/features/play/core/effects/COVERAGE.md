@@ -9,73 +9,73 @@ Partial = some lines parsed. Unparsed = no line parsed. Unparsed lines keep thei
 ## Overall
 
 - Cards: 4594
-- Fully parsed: 517 (11.3%)
+- Fully parsed: 527 (11.5%)
 - Overridden: 0 (0.0%)
-- Partially parsed: 1862 (40.5%)
-- Unparsed: 2215 (48.2%)
+- Partially parsed: 1867 (40.6%)
+- Unparsed: 2200 (47.9%)
 
 ## ST1-ST10 target (>= 90% fully parsed)
 
 - Cards: 150
-- Fully parsed or overridden: 75 (50.0%)
-- Partially parsed: 30, unparsed: 45
+- Fully parsed or overridden: 79 (52.7%)
+- Partially parsed: 30, unparsed: 41
 
 ## Per set
 
 | Set | Cards | Full (incl. overrides) | Partial | Unparsed |
 | --- | ---: | ---: | ---: | ---: |
 | AD1 | 25 | 0.0% | 92.0% | 8.0% |
-| BT1 | 115 | 43.5% | 16.5% | 40.0% |
+| BT1 | 115 | 44.3% | 16.5% | 39.1% |
 | BT10 | 112 | 15.2% | 28.6% | 56.3% |
 | BT11 | 112 | 10.7% | 34.8% | 54.5% |
 | BT12 | 112 | 10.7% | 28.6% | 60.7% |
 | BT13 | 112 | 5.4% | 40.2% | 54.5% |
 | BT14 | 102 | 13.7% | 26.5% | 59.8% |
-| BT15 | 102 | 3.9% | 47.1% | 49.0% |
+| BT15 | 102 | 3.9% | 48.0% | 48.0% |
 | BT16 | 102 | 2.9% | 43.1% | 53.9% |
 | BT17 | 102 | 0.0% | 40.2% | 59.8% |
 | BT18 | 102 | 5.9% | 44.1% | 50.0% |
 | BT19 | 102 | 2.9% | 47.1% | 50.0% |
-| BT2 | 112 | 33.0% | 23.2% | 43.8% |
+| BT2 | 112 | 33.9% | 22.3% | 43.8% |
 | BT20 | 102 | 2.9% | 63.7% | 33.3% |
-| BT21 | 102 | 0.0% | 56.9% | 43.1% |
+| BT21 | 102 | 0.0% | 57.8% | 42.2% |
 | BT22 | 102 | 0.0% | 63.7% | 36.3% |
 | BT23 | 102 | 0.0% | 57.8% | 42.2% |
 | BT24 | 102 | 3.9% | 51.0% | 45.1% |
 | BT25 | 104 | 0.0% | 58.7% | 41.3% |
 | BT26 | 104 | 0.0% | 62.5% | 37.5% |
 | BT27 | 104 | 23.1% | 54.8% | 22.1% |
-| BT3 | 112 | 33.9% | 26.8% | 39.3% |
-| BT4 | 115 | 28.7% | 26.1% | 45.2% |
+| BT3 | 112 | 34.8% | 25.9% | 39.3% |
+| BT4 | 115 | 28.7% | 27.0% | 44.3% |
 | BT5 | 112 | 18.8% | 26.8% | 54.5% |
 | BT6 | 112 | 15.2% | 28.6% | 56.3% |
-| BT7 | 112 | 9.8% | 15.2% | 75.0% |
+| BT7 | 112 | 9.8% | 17.0% | 73.2% |
 | BT8 | 112 | 19.6% | 31.3% | 49.1% |
 | BT9 | 112 | 17.0% | 25.0% | 58.0% |
-| EX1 | 73 | 9.6% | 26.0% | 64.4% |
-| EX10 | 74 | 0.0% | 47.3% | 52.7% |
-| EX11 | 74 | 0.0% | 67.6% | 32.4% |
+| EX1 | 73 | 11.0% | 26.0% | 63.0% |
+| EX10 | 74 | 0.0% | 48.6% | 51.4% |
+| EX11 | 74 | 1.4% | 66.2% | 32.4% |
 | EX12 | 77 | 1.3% | 74.0% | 24.7% |
 | EX13 | 77 | 2.6% | 59.7% | 37.7% |
 | EX14 | 3 | 33.3% | 66.7% | 0.0% |
 | EX2 | 74 | 4.1% | 31.1% | 64.9% |
 | EX3 | 74 | 4.1% | 17.6% | 78.4% |
-| EX4 | 74 | 0.0% | 37.8% | 62.2% |
+| EX4 | 74 | 0.0% | 39.2% | 60.8% |
 | EX5 | 74 | 0.0% | 43.2% | 56.8% |
 | EX6 | 74 | 1.4% | 45.9% | 52.7% |
 | EX7 | 74 | 5.4% | 54.1% | 40.5% |
 | EX8 | 74 | 10.8% | 43.2% | 45.9% |
 | EX9 | 74 | 4.1% | 64.9% | 31.1% |
-| LM | 68 | 0.0% | 14.7% | 85.3% |
+| LM | 68 | 1.5% | 13.2% | 85.3% |
 | P | 251 | 6.4% | 45.0% | 48.6% |
 | RB1 | 36 | 5.6% | 19.4% | 75.0% |
-| ST1 | 16 | 68.8% | 6.3% | 25.0% |
-| ST10 | 15 | 33.3% | 26.7% | 40.0% |
+| ST1 | 16 | 75.0% | 0.0% | 25.0% |
+| ST10 | 15 | 33.3% | 33.3% | 33.3% |
 | ST12 | 16 | 25.0% | 6.3% | 68.8% |
 | ST13 | 16 | 18.8% | 6.3% | 75.0% |
 | ST14 | 12 | 8.3% | 50.0% | 41.7% |
-| ST15 | 16 | 43.8% | 37.5% | 18.8% |
-| ST16 | 16 | 43.8% | 18.8% | 37.5% |
+| ST15 | 16 | 43.8% | 43.8% | 12.5% |
+| ST16 | 16 | 43.8% | 25.0% | 31.3% |
 | ST17 | 13 | 0.0% | 46.2% | 53.8% |
 | ST18 | 15 | 33.3% | 46.7% | 20.0% |
 | ST19 | 15 | 20.0% | 53.3% | 26.7% |
@@ -89,61 +89,61 @@ Partial = some lines parsed. Unparsed = no line parsed. Unparsed lines keep thei
 | ST26 | 1 | 100.0% | 0.0% | 0.0% |
 | ST3 | 16 | 68.8% | 18.8% | 12.5% |
 | ST4 | 16 | 50.0% | 12.5% | 37.5% |
-| ST5 | 16 | 56.3% | 12.5% | 31.3% |
-| ST6 | 16 | 56.3% | 18.8% | 25.0% |
+| ST5 | 16 | 68.8% | 12.5% | 18.8% |
+| ST6 | 16 | 62.5% | 18.8% | 18.8% |
 | ST7 | 12 | 16.7% | 50.0% | 33.3% |
 | ST8 | 12 | 50.0% | 33.3% | 16.7% |
 | ST9 | 15 | 33.3% | 26.7% | 40.0% |
 
 ## Top 50 unparsed line templates
 
-1. (96) `[X] If you have N or less memory, set it to N.`
-2. (83) `[X] [X] ＜Blast＞`
-3. (78) `[X] ＜Delay＞`
-4. (60) `[X] Place this card in the battle area.`
-5. (47) `[X] If your opponent has a Digimon, gain N memory.`
-6. (45) `[X] ＜Save＞`
-7. (38) `・Gain N memory.`
-8. (37) `[X] At the end of the battle, play this card without paying the cost.`
-9. (26) `[X] ＜Digi-Burst＞`
-10. (19) `[X] If you have N or fewer Tamers, you may play N [X] from your hand without paying the cost.`
-11. (17) `[X] [X] ＜Draw＞ and trash N card in your hand.`
-12. (16) `[X] ＜Blitz＞`
-13. (15) `[X] This Digimon and any of your other Digimon may DNA digivolve into a Digimon card in the hand.`
-14. (14) `While you have a Tamer, you can ignore this card's color requirements.`
-15. (14) `[X] While this Digimon is suspended, it gets N DP.`
-16. (13) `[X] [X] When one of your opponent's Digimon attacks, you may change the attack target to this Digimon.`
-17. (13) `While you have no face-up security cards, you can ignore this card's color requirements.`
-18. (12) `[X] [X] When this Digimon deletes your opponent's Digimon in battle, trash their top security card.`
-19. (12) `[X] ＜Draw＞ Then, place this card in the battle area.`
-20. (12) `[X] ＜Draw＞ Then, you may play N [X] trait Digimon card without the same name as the cards in your battle area or trash from your hand to an empty space in your breeding area without paying the cost.`
-21. (12) `While you have don't have [X] in the battle area, you can ignore this card's color requirements.`
-22. (11) `[X] You may play N [X] from this Digimon's digivolution cards without paying the cost.`
-23. (11) `[X] You may play N [X] or [X] from your hand or trash without paying the cost. Then, place this card in the battle area.`
-24. (10) `[X] This Digimon gains all effects of cards with [X] in their names in this Digimon's digivolution cards.`
-25. (10) `[X] All of your opponent's Security Digimon get N DP.`
-26. (9) `[X] If you have N or fewer security cards, ＜Recovery＞`
-27. (9) `[X] This Digimon can't digivolve.`
-28. (9) `[X] Activate N of the effects below:`
-29. (9) `[X] [X] When this Digimon deletes your opponent's Digimon in battle, gain N memory.`
-30. (9) `[X] Reveal the top N cards of your deck. Add N card with the [X] trait and N card with the [X] trait among them to the hand. Return the rest to the bottom of the deck.`
-31. (9) `While you have an [X] trait Digimon or Tamer on the field, you can ignore this card's color requirements.`
-32. (9) `[X] If you have a Digimon with the [X] trait, gain N memory.`
-33. (9) `While you have a Digimon or Tamer with the [X] trait on the field, you can ignore this card's color requirements.`
-34. (8) `[X] This Digimon's attack target can't change.`
-35. (8) `[X] While this Digimon has [X] or [X] in its name, it gets N DP.`
-36. (8) `[X] While this Digimon has [X] in its text, it gets N DP.`
-37. (8) `[X] [X] When your other Digimon are played or digivolve, if any of them have the [X] trait, N of your Digimon gains ＜Alliance＞ for the turn. Then, N of your Digimon may attack.`
-38. (7) `Then, shuffle your security stack.`
-39. (7) `[X] While this Digimon has the [X] trait, it gets N DP.`
-40. (7) `[X] Trash the bottom digivolution card of N of your opponent's Digimon.`
-41. (7) `[X] Reveal the top N cards of your deck. Add N card with [X] in its text and N card with the [X] trait among them to the hand. Return the rest to the bottom of the deck.`
-42. (7) `[X] All of your opponent's security Digimon get N DP.`
-43. (7) `[X] You may play N [X] from your trash without paying the cost.`
-44. (7) `[X] You may play N level N or lower Digimon card with the [X] trait from your trash without paying the cost.`
-45. (7) `[X] [X] You may suspend N Digimon.`
-46. (7) `[X] Add your bottom security card to the hand. Then, place this card face up as the bottom security card.`
-47. (7) `[X] You may play N [X] from your hand without paying its memory cost.`
-48. (7) `[X] Play this card without paying its memory cost.`
-49. (7) `While you have an [X] trait Digimon, you can ignore this card's color requirements.`
-50. (7) `[X] If your opponent has a Digimon, ＜Delay＞`
+1. (83) `[X] [X] ＜Blast＞`
+2. (78) `[X] ＜Delay＞`
+3. (60) `[X] Place this card in the battle area.`
+4. (45) `[X] ＜Save＞`
+5. (38) `・Gain N memory.`
+6. (37) `[X] At the end of the battle, play this card without paying the cost.`
+7. (26) `[X] ＜Digi-Burst＞`
+8. (19) `[X] If you have N or fewer Tamers, you may play N [X] from your hand without paying the cost.`
+9. (17) `[X] [X] ＜Draw＞ and trash N card in your hand.`
+10. (16) `[X] ＜Blitz＞`
+11. (15) `[X] This Digimon and any of your other Digimon may DNA digivolve into a Digimon card in the hand.`
+12. (14) `While you have a Tamer, you can ignore this card's color requirements.`
+13. (14) `[X] While this Digimon is suspended, it gets N DP.`
+14. (13) `[X] [X] When one of your opponent's Digimon attacks, you may change the attack target to this Digimon.`
+15. (13) `While you have no face-up security cards, you can ignore this card's color requirements.`
+16. (12) `[X] [X] When this Digimon deletes your opponent's Digimon in battle, trash their top security card.`
+17. (12) `[X] ＜Draw＞ Then, place this card in the battle area.`
+18. (12) `[X] ＜Draw＞ Then, you may play N [X] trait Digimon card without the same name as the cards in your battle area or trash from your hand to an empty space in your breeding area without paying the cost.`
+19. (12) `While you have don't have [X] in the battle area, you can ignore this card's color requirements.`
+20. (11) `[X] You may play N [X] from this Digimon's digivolution cards without paying the cost.`
+21. (11) `[X] You may play N [X] or [X] from your hand or trash without paying the cost. Then, place this card in the battle area.`
+22. (10) `[X] This Digimon gains all effects of cards with [X] in their names in this Digimon's digivolution cards.`
+23. (10) `[X] All of your opponent's Security Digimon get N DP.`
+24. (9) `[X] If you have N or fewer security cards, ＜Recovery＞`
+25. (9) `[X] This Digimon can't digivolve.`
+26. (9) `[X] Activate N of the effects below:`
+27. (9) `[X] [X] When this Digimon deletes your opponent's Digimon in battle, gain N memory.`
+28. (9) `[X] Reveal the top N cards of your deck. Add N card with the [X] trait and N card with the [X] trait among them to the hand. Return the rest to the bottom of the deck.`
+29. (9) `While you have an [X] trait Digimon or Tamer on the field, you can ignore this card's color requirements.`
+30. (9) `[X] If you have a Digimon with the [X] trait, gain N memory.`
+31. (9) `While you have a Digimon or Tamer with the [X] trait on the field, you can ignore this card's color requirements.`
+32. (8) `[X] This Digimon's attack target can't change.`
+33. (8) `[X] While this Digimon has [X] or [X] in its name, it gets N DP.`
+34. (8) `[X] While this Digimon has [X] in its text, it gets N DP.`
+35. (8) `[X] [X] When your other Digimon are played or digivolve, if any of them have the [X] trait, N of your Digimon gains ＜Alliance＞ for the turn. Then, N of your Digimon may attack.`
+36. (7) `Then, shuffle your security stack.`
+37. (7) `[X] While this Digimon has the [X] trait, it gets N DP.`
+38. (7) `[X] Trash the bottom digivolution card of N of your opponent's Digimon.`
+39. (7) `[X] Reveal the top N cards of your deck. Add N card with [X] in its text and N card with the [X] trait among them to the hand. Return the rest to the bottom of the deck.`
+40. (7) `[X] All of your opponent's security Digimon get N DP.`
+41. (7) `[X] You may play N [X] from your trash without paying the cost.`
+42. (7) `[X] You may play N level N or lower Digimon card with the [X] trait from your trash without paying the cost.`
+43. (7) `[X] [X] You may suspend N Digimon.`
+44. (7) `[X] Add your bottom security card to the hand. Then, place this card face up as the bottom security card.`
+45. (7) `[X] You may play N [X] from your hand without paying its memory cost.`
+46. (7) `[X] Play this card without paying its memory cost.`
+47. (7) `While you have an [X] trait Digimon, you can ignore this card's color requirements.`
+48. (7) `[X] If your opponent has a Digimon, ＜Delay＞`
+49. (7) `・You may play N [X] from your hand without paying the cost.`
+50. (7) `・N of your Digimon may digivolve into [X] in the hand without paying the cost.`

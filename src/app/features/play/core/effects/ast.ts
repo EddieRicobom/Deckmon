@@ -5,7 +5,16 @@
  */
 
 /** Timings the engine can fire from game events. */
-export type TriggerTiming = 'onPlay' | 'whenDigivolving' | 'whenAttacking' | 'onDeletion' | 'security' | 'main' | 'startOfYourTurn' | 'endOfYourTurn';
+export type TriggerTiming =
+  | 'onPlay'
+  | 'whenDigivolving'
+  | 'whenAttacking'
+  | 'onDeletion'
+  | 'security'
+  | 'main'
+  | 'startOfYourTurn'
+  | 'startOfYourMainPhase'
+  | 'endOfYourTurn';
 
 /** Continuous timings: parsed for coverage, not applied yet (see COVERAGE.md). */
 export type ContinuousTiming = 'yourTurn' | 'allTurns' | 'opponentsTurn' | 'endOfOpponentsTurn';
@@ -20,6 +29,7 @@ export const TRIGGER_TIMINGS: readonly TriggerTiming[] = [
   'security',
   'main',
   'startOfYourTurn',
+  'startOfYourMainPhase',
   'endOfYourTurn',
 ];
 
@@ -31,6 +41,12 @@ export function isTriggerTiming(t: EffectTiming): t is TriggerTiming {
 export type EffectField = 'effect' | 'digivolveEffect' | 'securityEffect';
 
 /** Numeric comparison used by level, DP and cost filters. */
+/**
+ * How long an effect lasts. 'turn' ends at the end of this turn. 'continuous' is a printed static effect (applied as a
+ * turn modifier for now, see COVERAGE.md). 'opponentNextTurn' and 'yourNextTurn' last until the end of that later turn.
+ */
+export type Duration = 'turn' | 'continuous' | 'opponentNextTurn' | 'yourNextTurn';
+
 export interface Cmp {
   op: 'eq' | 'le' | 'ge';
   n: number;
@@ -73,6 +89,8 @@ export type Condition =
   | { kind: 'colorInPlay'; color: string }
   | { kind: 'opponentHasNoDigivolutionDigimon' }
   | { kind: 'opponentHasDigimon' }
+  /** "If you have N or less memory": the controller's side of the gauge is at most n. */
+  | { kind: 'memoryAtMost'; n: number }
   /** "If you do": the previous action in this effect did something. */
   | { kind: 'ifDone' };
 
@@ -85,10 +103,12 @@ export type Action =
   | (ActionBase & { type: 'draw'; n: number })
   /** Positive = gain (toward the controller's side of the gauge), negative = lose. */
   | (ActionBase & { type: 'memory'; delta: number })
-  | (ActionBase & { type: 'dp'; target: Target; delta: number; duration: 'turn' | 'continuous' })
-  /** Adds a keyword (or "Security A. +N") as a marker until the end of the turn. */
-  | (ActionBase & { type: 'keyword'; target: Target; keyword: string; duration: 'turn' | 'continuous' })
-  | (ActionBase & { type: 'cant'; target: Target; what: 'attack' | 'block'; duration: 'turn' })
+  | (ActionBase & { type: 'dp'; target: Target; delta: number; duration: Duration })
+  /** Adds a keyword (or "Security A. +N") as a marker for the duration. */
+  | (ActionBase & { type: 'keyword'; target: Target; keyword: string; duration: Duration })
+  | (ActionBase & { type: 'cant'; target: Target; what: 'attack' | 'block'; duration: Duration })
+  /** "Set it to N": moves the controller's side of the gauge to n. */
+  | (ActionBase & { type: 'memorySet'; n: number })
   | (ActionBase & { type: 'suspend'; target: Target; suspended: boolean })
   | (ActionBase & { type: 'delete'; target: Target })
   /** Battle stack to hand, or a trash card to hand. */

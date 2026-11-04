@@ -7,7 +7,7 @@
  * state everywhere. Choices are the controller's. Options name uids or stack ids, never hidden card ids.
  */
 import type { GameState, PlayerIndex, PlayerState, Stack } from '../types';
-import type { Action, Cmp, Condition, EffectOption, Filter, QueueItem, Target } from './ast';
+import type { Action, Cmp, Condition, Duration, EffectOption, Filter, QueueItem, Target } from './ast';
 import { beginResolution, endResolution, enqueue, triggerTiming } from './queue';
 import { parsedCard } from './parser';
 import { CardInfo, cardInfo } from '../rules/card-data';
@@ -30,6 +30,7 @@ const TAG_OF: Record<string, string> = {
   security: 'Security',
   main: 'Main',
   startOfYourTurn: 'Start of Your Turn',
+  startOfYourMainPhase: 'Start of Your Main Phase',
   endOfYourTurn: 'End of Your Turn',
 };
 
@@ -172,6 +173,22 @@ export function matchStack(s: Stack, f: Filter): boolean {
   return true;
 }
 
+/** The controller's side of the gauge: positive when they are the active player and hold memory. */
+function ownMemory(state: GameState, owner: PlayerIndex): number {
+  return state.activePlayer === owner ? state.memory : -state.memory;
+}
+
+/**
+ * The turn an until-turn effect ends on. The current turn belongs to `state.activePlayer`, so the next turn of the
+ * other player is one later, and the next turn of the active player is two later.
+ */
+function untilTurnFor(state: GameState, owner: PlayerIndex, d: 'opponentNextTurn' | 'yourNextTurn'): number {
+  const whoseTurn = d === 'opponentNextTurn' ? other(owner) : owner;
+  return state.activePlayer === whoseTurn ? state.turn + 2 : state.turn + 1;
+}
+
+const isUntilTurn = (d: Duration): d is 'opponentNextTurn' | 'yourNextTurn' => d === 'opponentNextTurn' || d === 'yourNextTurn';
+
 function conditionHolds(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, c: Condition): boolean {
   const p = state.players[q.owner];
   const opp = state.players[other(q.owner)];
@@ -190,6 +207,8 @@ function conditionHolds(state: GameState, q: Extract<QueueItem, { kind: 'effect'
       return opp.battle.some((s) => s.cards.length === 1 && topInfo(s)?.kind === 'digimon');
     case 'opponentHasDigimon':
       return opp.battle.some((s) => topInfo(s)?.kind === 'digimon');
+    case 'memoryAtMost':
+      return ownMemory(state, q.owner) <= c.n;
     case 'ifDone':
       return q.lastPerformed === true;
   }
@@ -307,6 +326,11 @@ function execute(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, ac
         for (const id of ids) {
           const s = findStack(state.players[owner], id);
           if (!s) continue;
+          if (isUntilTurn(action.duration)) {
+            s.timedMods = [...(s.timedMods ?? []), { until: untilTurnFor(state, q.owner, action.duration), dp: action.delta }];
+            log(state, q.owner, `${stackName(s)} ${action.delta >= 0 ? '+' : ''}${action.delta} DP until the end of turn ${untilTurnFor(state, q.owner, action.duration)}.`);
+            continue;
+          }
           s.tempDpMod = (s.tempDpMod ?? 0) + action.delta;
           log(state, q.owner, `${stackName(s)} ${action.delta >= 0 ? '+' : ''}${action.delta} DP for the turn (modifier ${stackDpMod(s) >= 0 ? '+' : ''}${stackDpMod(s)}).`);
         }
@@ -317,8 +341,8 @@ function execute(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, ac
         for (const id of ids) {
           const s = findStack(state.players[owner], id);
           if (!s) continue;
-          s.tempMarkers = [...(s.tempMarkers ?? []), action.keyword];
-          log(state, q.owner, `${stackName(s)} gains ${action.keyword} for the turn.`);
+          addMarker(state, q, s, action.keyword, action.duration);
+          log(state, q.owner, `${stackName(s)} gains ${action.keyword} ${durationWords(action.duration)}.`);
         }
       });
 
@@ -328,10 +352,17 @@ function execute(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, ac
         for (const id of ids) {
           const s = findStack(state.players[owner], id);
           if (!s) continue;
-          s.tempMarkers = [...(s.tempMarkers ?? []), marker];
-          log(state, q.owner, `${stackName(s)} ${marker.toLowerCase()} for the turn.`);
+          addMarker(state, q, s, marker, action.duration);
+          log(state, q.owner, `${stackName(s)} ${marker.toLowerCase()} ${durationWords(action.duration)}.`);
         }
       });
+    }
+
+    case 'memorySet': {
+      // "Set it to N" moves the controller's side of the gauge to N.
+      state.memory = clamp(action.n * (state.activePlayer === q.owner ? 1 : -1));
+      log(state, q.owner, `${me.name} set memory to ${action.n} (gauge ${state.memory >= 0 ? '+' : ''}${state.memory}).`);
+      return 'performed';
     }
 
     case 'suspend':
@@ -485,6 +516,21 @@ function execute(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, ac
       return 'performed';
     }
   }
+}
+
+/** Adds a marker for a duration: until the end of this turn (cleared with the other temporary effects) or a later one. */
+function addMarker(state: GameState, q: Extract<QueueItem, { kind: 'effect' }>, s: Stack, marker: string, d: Duration): void {
+  if (isUntilTurn(d)) {
+    s.timedMods = [...(s.timedMods ?? []), { until: untilTurnFor(state, q.owner, d), marker }];
+    return;
+  }
+  s.tempMarkers = [...(s.tempMarkers ?? []), marker];
+}
+
+function durationWords(d: Duration): string {
+  if (d === 'opponentNextTurn') return "until the end of your opponent's next turn";
+  if (d === 'yourNextTurn') return 'until the end of your next turn';
+  return 'for the turn';
 }
 
 function moveHandToTrash(state: GameState, owner: PlayerIndex, uids: string[]): void {

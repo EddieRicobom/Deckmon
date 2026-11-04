@@ -9,7 +9,7 @@
  * Coverage. `parseCardText` reports each line as parsed, static or unparsed. A card is complete when no line is
  * unparsed. Per-card overrides (overrides.ts) replace the parse for cards the templates cannot read.
  */
-import type { Action, Cmp, Condition, EffectField, EffectTiming, Filter, Side, Target } from './ast';
+import type { Action, Cmp, Condition, Duration, EffectField, EffectTiming, Filter, Side, Target } from './ast';
 import { OVERRIDES } from './overrides';
 
 /** Display tag (as printed) to timing. Keys are lower-case. */
@@ -21,6 +21,7 @@ const TIMING_OF_TAG: Record<string, EffectTiming> = {
   security: 'security',
   main: 'main',
   'start of your turn': 'startOfYourTurn',
+  'start of your main phase': 'startOfYourMainPhase',
   'end of your turn': 'endOfYourTurn',
   'your turn': 'yourTurn',
   'all turns': 'allTurns',
@@ -237,7 +238,20 @@ const CONDITIONS: Array<[RegExp, (m: RegExpExecArray) => Condition]> = [
   [new RegExp(`^if you have (?:an? )?(${COLORS}) digimon in play, (.+)$`), (m) => ({ kind: 'colorInPlay', color: m[1] })],
   [/^if your opponent has (?:a|an) digimon with no digivolution cards, (.+)$/, () => ({ kind: 'opponentHasNoDigivolutionDigimon' })],
   [/^if your opponent has (?:a|an) digimon, (.+)$/, () => ({ kind: 'opponentHasDigimon' })],
+  [/^if you have (\d+) or less memory, (.+)$/, (m) => ({ kind: 'memoryAtMost', n: +m[1] })],
   [/^if you do, (.+)$/, () => ({ kind: 'ifDone' })],
+];
+
+/** Durations written before the effect: "Until the end of your opponent's next turn, ...". */
+const PREFIX_DURATIONS: Array<[RegExp, Duration]> = [
+  [/^until (?:the end of )?your opponent's next turn, (.+)$/, 'opponentNextTurn'],
+  [/^until (?:the end of )?your next turn, (.+)$/, 'yourNextTurn'],
+];
+
+/** Durations written after the effect: "... gets +1000 DP until the end of your opponent's next turn". */
+const SUFFIX_DURATIONS: Array<[RegExp, Duration]> = [
+  [/^(.+?) until (?:the end of )?your opponent's next turn$/, 'opponentNextTurn'],
+  [/^(.+?) until (?:the end of )?your next turn$/, 'yourNextTurn'],
 ];
 
 const KEYWORD_CANON: Record<string, string> = {
@@ -287,6 +301,16 @@ const ACTIONS: Array<[RegExp, (m: RegExpExecArray) => ActionOut]> = [
     (m) => {
       const target = battleOrSelf(m[1]);
       return target ? { type: 'dp', target, delta: +m[2], duration: 'continuous' } : null;
+    },
+  ],
+  [
+    /^(.+?) can't (attack or block|attack|block)$/,
+    (m) => {
+      const target = battleOrSelf(m[1]);
+      if (!target) return null;
+      const whats: Array<'attack' | 'block'> = m[2] === 'attack or block' ? ['attack', 'block'] : [m[2] as 'attack' | 'block'];
+      // The duration is set by the caller; a bare "can't" without one is not a printed effect we read.
+      return whats.map((what) => ({ type: 'cant', target, what, duration: 'turn' }) as Action);
     },
   ],
   [
@@ -359,8 +383,40 @@ function parsePicks(text: string): Array<{ filter: Filter; n: number }> | null {
   return out.length > 0 ? out : null;
 }
 
-/** One clause to actions. A condition prefix is read first, then the action template. */
+/** One clause to actions. A duration is read first, then a condition prefix, then the action template. */
 function parseClause(clause: string): Action[] | null {
+  let s = clause;
+  let duration: Duration | undefined;
+  for (const [re, d] of PREFIX_DURATIONS) {
+    const m = re.exec(s);
+    if (m) {
+      duration = d;
+      s = m[1];
+      break;
+    }
+  }
+  if (!duration) {
+    for (const [re, d] of SUFFIX_DURATIONS) {
+      const m = re.exec(s);
+      if (m) {
+        duration = d;
+        s = m[1];
+        break;
+      }
+    }
+  }
+  const actions = parseClauseBody(s);
+  if (!actions) return null;
+  if (!duration) {
+    // "can't attack" has no lasting form without a stated duration, so it is not read.
+    return actions.some((a) => a.type === 'cant') ? null : actions;
+  }
+  // A duration only applies to actions that last. Anything else makes the clause unreadable.
+  if (!actions.every((a) => 'duration' in a)) return null;
+  return actions.map((a) => ({ ...a, duration }) as Action);
+}
+
+function parseClauseBody(clause: string): Action[] | null {
   let s = clause;
   let when: Condition | undefined;
   for (const [re, make] of CONDITIONS) {
@@ -372,6 +428,11 @@ function parseClause(clause: string): Action[] | null {
     }
   }
   if (!when && /^(if|when|while|otherwise|after|during|at the|choose|you may)\b/.test(s)) return null;
+  if (when?.kind === 'memoryAtMost') {
+    // The only action that follows a memory condition is the set itself.
+    const set = /^set it to (\d+)$/.exec(s);
+    return set ? [{ type: 'memorySet', n: +set[1], when }] : null;
+  }
   for (const [re, make] of ACTIONS) {
     const m = re.exec(s);
     if (!m) continue;

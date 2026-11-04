@@ -11,7 +11,7 @@ import { cardInfo } from './rules/card-data';
 import { assistedError } from './rules/validate';
 import { passTurnRuled, autoEndTurnIfNeeded } from './rules/turn';
 import { declareAttack, resolveBlock, securityCheck } from './rules/combat';
-import { digivolveCost, drawOne, payCost, remind } from './rules/helpers';
+import { allStacks, digivolveCost, drawOne, payCost, remind, remindStack } from './rules/helpers';
 import { resolveEffectChoice, runEffects } from './effects/engine';
 import { setActor } from './effects/queue';
 import {
@@ -104,7 +104,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
 
     case 'nextPhase': {
       if (ruled) {
-        state.phase = 'main';
+        enterMainPhase(state);
         say('Phase: main.');
         break;
       }
@@ -172,7 +172,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       if (!egg) throw new Error(`${who}'s egg deck is empty`);
       p.breeding = { stackId: mintStackId(), cards: [egg], suspended: false, dpMod: 0 };
       say(`${who} hatched an egg (${cardLabel(egg.cardId)}).`);
-      if (ruled) state.phase = 'main';
+      if (ruled) enterMainPhase(state);
       break;
     }
 
@@ -183,7 +183,7 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       const top = p.breeding.cards[p.breeding.cards.length - 1];
       p.breeding = null;
       say(`${who} moved ${top ? cardLabel(top.cardId) : 'a digimon'} from breeding to battle.`);
-      if (ruled) state.phase = 'main';
+      if (ruled) enterMainPhase(state);
       break;
     }
 
@@ -408,6 +408,16 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
 // ---------------------------------------------------------------------------------------------
 
 /** Fills placeholder ('?') cards on the owner's board with the cardIds the sender revealed. */
+/**
+ * Breeding ends and the main phase begins. The active player's [Start of Your Main Phase] effects fire here, once per
+ * turn, because the phase only changes once.
+ */
+function enterMainPhase(state: GameState): void {
+  if (state.phase === 'main') return;
+  state.phase = 'main';
+  for (const s of allStacks(state.players[state.activePlayer])) remindStack(state, state.activePlayer, s, 'Start of Your Main Phase');
+}
+
 function applyReveals(p: PlayerState, reveals: Record<string, string>): void {
   for (const card of allCards(p)) {
     if (card.cardId === HIDDEN_CARD_ID && Object.prototype.hasOwnProperty.call(reveals, card.uid)) {

@@ -41,6 +41,7 @@ export function stackKeywords(stack: Stack): Set<string> {
     for (const k of keywordsIn(isTop ? info.effect : info.digivolveEffect)) out.add(k);
   });
   for (const m of [...(stack.markers ?? []), ...(stack.tempMarkers ?? [])]) out.add(m);
+  for (const m of stack.timedMods ?? []) if (m.marker) out.add(m.marker);
   return out;
 }
 

@@ -33,6 +33,11 @@ export interface Stack {
   /** Markers and DP that only last until the next passTurn ("until end of turn"). */
   tempMarkers?: string[];
   tempDpMod?: number;
+  /**
+   * Effects that last until the end of a later turn (`until` is that turn number). Each entry is a DP modifier or a
+   * marker. Removed by clearTemporary once that turn ends.
+   */
+  timedMods?: Array<{ until: number; dp?: number; marker?: string }>;
   /** Generic numeric counter for effects that count things. Never negative. */
   counter?: number;
   /** Turn number the stack entered the battle area. Digivolving does not reset it. Undefined = long ago. */

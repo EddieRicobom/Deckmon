@@ -256,7 +256,7 @@ export function zoneLabel(zone: Zone): string {
 
 /** Total DP modifier on a stack: permanent plus until-end-of-turn. */
 export function stackDpMod(stack: Stack): number {
-  return (stack.dpMod ?? 0) + (stack.tempDpMod ?? 0);
+  return (stack.dpMod ?? 0) + (stack.tempDpMod ?? 0) + (stack.timedMods ?? []).reduce((sum, m) => sum + (m.dp ?? 0), 0);
 }
 
 /**
@@ -275,6 +275,13 @@ export function clearTemporary(state: GameState): number {
       if (s.tempMarkers !== undefined) {
         cleared += s.tempMarkers.length;
         delete s.tempMarkers;
+      }
+      if (s.timedMods !== undefined) {
+        // Called before the turn counter moves on: a modifier whose turn is this one ends now.
+        const keep = s.timedMods.filter((m) => m.until > state.turn);
+        cleared += s.timedMods.length - keep.length;
+        if (keep.length > 0) s.timedMods = keep;
+        else delete s.timedMods;
       }
     }
   }
