@@ -1,10 +1,11 @@
 import { NgClass, NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
 import { Command } from '../core/commands';
 import { allCards, getStack } from '../core/game';
 import { setCardNameResolver } from '../core/labels';
+import { registerCardRecords } from '../core/rules/card-data';
 import { GameState, MEMORY_MAX, MEMORY_MIN, PHASES, Phase, PlayerIndex } from '../core/types';
 import { redactFor, HIDDEN_CARD_ID } from '../core/view';
 import { GameSession } from '../game-session.service';
@@ -100,6 +101,30 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
     </ng-template>
 
     @if (state(); as s) {
+      @if (s.winner !== null && s.winner !== undefined) {
+        <div class="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div class="w-full max-w-sm rounded-xl border border-line bg-ink-1 p-5 text-center">
+            <h2 class="m-0 text-xl font-semibold text-fg">Game over</h2>
+            <p class="mt-2 text-sm text-muted">{{ s.players[s.winner].name }} wins: {{ s.winReason }}</p>
+            <button type="button" class="btn-play mt-4" (click)="backToLobby()">Back to the lobby for a rematch</button>
+          </div>
+        </div>
+      }
+      @if (s.pending; as p) {
+        <div class="fixed inset-x-2 top-14 z-[450] mx-auto flex max-w-md flex-wrap items-center gap-2 rounded-lg border border-accent bg-ink-1 p-3 text-sm text-fg" role="status">
+          @if (p.kind === 'block') {
+            <span>{{ s.players[p.owner].name }}, block the attack with a Blocker?</span>
+            @if (canDecide(p.owner)) {
+              @for (id of p.blockers; track id; let i = $index) {
+                <button type="button" class="btn-play" (click)="resolveBlock(id)">Blocker {{ i + 1 }}</button>
+              }
+              <button type="button" class="btn-play" (click)="resolveBlock(null)">No block</button>
+            }
+          } @else {
+            <span>Security check for {{ s.players[p.owner].name }}: {{ p.remaining }} left, resolving.</span>
+          }
+        </div>
+      }
       <div
         class="relative mx-auto flex h-[calc(var(--app-vh)-3.5rem)] w-full max-w-[100rem] flex-col gap-2 overflow-x-hidden px-2 py-2 md:h-[calc(var(--app-vh)-5rem)] md:px-4"
         [class.overflow-hidden]="compact()"
@@ -125,7 +150,7 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               [attr.aria-expanded]="endTurnOpen()">
               End turn
             </button>
-            <button type="button" class="btn-play px-2.5" (click)="undo()" [disabled]="!session.canUndo()" aria-label="Undo" title="Undo (Ctrl+Z)">
+            <button type="button" class="btn-play px-2.5" (click)="undo()" [disabled]="!session.canUndo()" aria-label="Undo" [title]="undoTitle()">
               <i class="pi pi-undo"></i>
             </button>
             <button
@@ -150,7 +175,7 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           <div class="ml-auto flex flex-wrap items-center gap-1.5">
             <button type="button" class="btn-play" (click)="nextPhase()" [disabled]="s.phase === 'end'">Next phase</button>
             <button type="button" class="btn-play btn-primary" (click)="toggleEndTurn()" [attr.aria-expanded]="endTurnOpen()">End turn</button>
-            <button type="button" class="btn-play" (click)="undo()" [disabled]="!session.canUndo()" title="Undo (Ctrl+Z)">
+            <button type="button" class="btn-play" (click)="undo()" [disabled]="!session.canUndo()" [title]="undoTitle()">
               <i class="pi pi-undo"></i> Undo
             </button>
             <button type="button" class="btn-play" (click)="toggleShowAll()" [attr.aria-pressed]="showAll()">
@@ -678,6 +703,11 @@ export class PlaymatComponent implements OnInit {
 
   constructor() {
     setCardNameResolver((cardId) => this.store.cardsMap().get(cardId)?.name.english);
+    // Assisted rules read card text, cost and colours from the same card list the board uses.
+    effect(() => {
+      const cards = [...this.store.cardsMap().values()] as unknown as Record<string, unknown>[];
+      if (cards.length > 0) registerCardRecords(cards);
+    });
   }
 
   ngOnInit(): void {
@@ -701,6 +731,11 @@ export class PlaymatComponent implements OnInit {
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === 'z') {
       event.preventDefault();
       this.undo();
+      return;
+    }
+    if (((event.ctrlKey || event.metaKey) && key === 'y') || ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'z')) {
+      event.preventDefault();
+      this.redo();
       return;
     }
     if (key === 's' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -740,6 +775,32 @@ export class PlaymatComponent implements OnInit {
   undo(): void {
     this.closeMenu();
     this.session.undo();
+  }
+
+  redo(): void {
+    this.closeMenu();
+    this.session.redo();
+  }
+
+  /** Tooltip for the undo buttons: the reason when undo is blocked. */
+  protected undoTitle(): string {
+    return this.session.undoBlockReason() ?? 'Undo (Ctrl+Z)';
+  }
+
+  /** Online each device answers only its own decisions. Solo answers for both seats. */
+  protected canDecide(owner: PlayerIndex): boolean {
+    const local = this.session.localPlayer();
+    return local === null || local === owner;
+  }
+
+  protected resolveBlock(blockerStackId: string | null): void {
+    const pending = this.session.state()?.pending;
+    if (!pending || pending.kind !== 'block') return;
+    this.act({ type: 'resolveBlock', player: pending.owner, blockerStackId });
+  }
+
+  protected backToLobby(): void {
+    void this.router.navigateByUrl('/play');
   }
 
   nextPhase(): void {

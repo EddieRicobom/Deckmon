@@ -33,6 +33,8 @@ export interface Stack {
   tempDpMod?: number;
   /** Generic numeric counter for effects that count things. Never negative. */
   counter?: number;
+  /** Turn number the stack entered the battle area. Digivolving does not reset it. Undefined = long ago. */
+  enteredTurn?: number;
 }
 
 /** Zones holding loose cards. Piles are ordered bottom..top (top = last element) except hand/trash/reveal. */
@@ -73,7 +75,40 @@ export interface LogEntry {
   text: string;
 }
 
+/** `assisted` enforces the base rules (see core/rules/RULES.md). `manual` is the free sandbox. Absent = manual. */
+export type RulesMode = 'assisted' | 'manual';
+
+/**
+ * A decision that belongs to one player. While set, only `owner` may act (except to force).
+ * - block: the defender chooses a Blocker (or none) for an attack on the player.
+ * - security: the defender's client reveals and resolves the next security check.
+ */
+export type Pending =
+  | { kind: 'block'; owner: PlayerIndex; attacker: PlayerIndex; attackerStackId: string; blockers: string[]; checks: number }
+  | { kind: 'security'; owner: PlayerIndex; attacker: PlayerIndex; attackerStackId: string; remaining: number };
+
+/** A non-blocking effect reminder. The player applies the effect with the manual tools. */
+export interface Reminder {
+  id: number;
+  turn: number;
+  player: PlayerIndex;
+  cardName: string;
+  timing: string;
+  text: string;
+}
+
+export const MAX_REMINDERS = 40;
+
 export interface GameState {
+  /** Rules mode. Absent on states created before the rules layer existed, which means manual. */
+  mode?: RulesMode;
+  /** Open decision (assisted mode only). */
+  pending?: Pending | null;
+  /** Winner once the game ends (assisted mode). Null or absent while the game runs. */
+  winner?: PlayerIndex | null;
+  winReason?: string | null;
+  /** Effect reminders, newest last, capped at MAX_REMINDERS. */
+  reminders?: Reminder[];
   /** Original seed, kept for replay / debugging. Redacted for opponents by view.ts. */
   seed: number;
   /** Current PRNG state. Redacted for opponents by view.ts. */

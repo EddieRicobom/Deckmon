@@ -12,6 +12,11 @@ export type Destination = Zone;
 interface Base {
   player: PlayerIndex;
   /**
+   * Assisted mode only: the player turned on Force, so the rules are not enforced for this command and it is logged
+   * as an override. Ignored in manual mode.
+   */
+  force?: boolean;
+  /**
    * Wire only (never set locally). uid -> real cardId for cards this command makes public. The receiving
    * peer fills them into its placeholder ('?') cards before applying the command.
    */
@@ -77,6 +82,14 @@ export type Command =
   | (Base & { type: 'removeMarker'; stackId: string; marker: string; temporary?: boolean })
   | (Base & { type: 'trashStack'; stackId: string })
   | (Base & { type: 'returnToHand'; stackId: string })
-  | (Base & { type: 'stackToDeck'; stackId: string; position: 'top' | 'bottom' });
+  | (Base & { type: 'stackToDeck'; stackId: string; position: 'top' | 'bottom' })
+
+  // ---- combat (assisted mode; attacker is `player`) -----------------------------------------
+  /** Declares an attack with an unsuspended battle Digimon. Suspends it, then runs blocks and battles. */
+  | (Base & { type: 'attack'; attackerStackId: string; target: { kind: 'player' } | { kind: 'stack'; stackId: string } })
+  /** Defender's answer to a pending block: a Blocker's stack id, or null for no block. */
+  | (Base & { type: 'resolveBlock'; blockerStackId: string | null })
+  /** Owner (defender) resolves the next security check of the pending attack. */
+  | (Base & { type: 'securityCheck' });
 
 export type CommandType = Command['type'];

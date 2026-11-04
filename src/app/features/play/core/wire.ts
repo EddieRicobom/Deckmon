@@ -11,7 +11,7 @@ import { allCards, cloneState, dealBoard, DeckListEntry, emptyPlayer, expandDeck
 import { normaliseSeed } from './rng';
 import { redactPlayer, HIDDEN_CARD_ID } from './view';
 import { clampMemory } from './reducer';
-import { GameState, PHASES, Phase, PlayerIndex, PlayerState, STATE_VERSION } from './types';
+import { GameState, PHASES, Phase, Pending, PlayerIndex, PlayerState, RulesMode, STATE_VERSION } from './types';
 
 export interface WireCommand {
   cmd: Command;
@@ -73,18 +73,25 @@ export function createOnlineState(args: {
   own: { player: PlayerState; rngState: number };
   seed: number;
   rival: PlayerState;
+  /** The host's rules choice. Absent means manual. */
+  mode?: RulesMode;
 }): GameState {
   const rivalIndex: PlayerIndex = args.ownIndex === 0 ? 1 : 0;
   const mine: PlayerState = { ...args.own.player, id: args.ownIndex, name: args.names[args.ownIndex] };
   const theirs: PlayerState = { ...args.rival, id: rivalIndex, name: args.names[rivalIndex], eggUids: [] };
   const players: [PlayerState, PlayerState] = args.ownIndex === 0 ? [mine, theirs] : [theirs, mine];
   return {
+    mode: args.mode ?? 'manual',
+    pending: null,
+    winner: null,
+    winReason: null,
+    reminders: [],
     seed: normaliseSeed(args.seed),
     rngState: args.own.rngState,
     nextId: 1,
     turn: 1,
     activePlayer: 0,
-    phase: 'unsuspend',
+    phase: args.mode === 'assisted' ? 'breeding' : 'unsuspend',
     memory: 0,
     players,
     log: [{ seq: 0, turn: 1, player: 0, text: `Game started. ${args.names[0]} vs ${args.names[1]}.` }],
@@ -100,6 +107,9 @@ export function publicHash(state: GameState): string {
     p: state.phase,
     m: state.memory,
     n: state.nextId,
+    x: state.mode ?? 'manual',
+    d: state.pending ?? null,
+    w: state.winner ?? null,
     b: [redactPlayer(state.players[0]), redactPlayer(state.players[1])],
   });
   let h = 0x811c9dc5;
@@ -118,6 +128,10 @@ export interface ResyncPayload {
   memory: number;
   nextId: number;
   board: PlayerState;
+  mode?: RulesMode;
+  pending?: Pending | null;
+  winner?: PlayerIndex | null;
+  winReason?: string | null;
 }
 
 export function resyncPayload(state: GameState, me: PlayerIndex): ResyncPayload {
@@ -128,6 +142,10 @@ export function resyncPayload(state: GameState, me: PlayerIndex): ResyncPayload 
     memory: state.memory,
     nextId: state.nextId,
     board: redactPlayer(state.players[me]),
+    mode: state.mode ?? 'manual',
+    pending: state.pending ?? null,
+    winner: state.winner ?? null,
+    winReason: state.winReason ?? null,
   };
 }
 
@@ -144,6 +162,10 @@ export function applyResync(state: GameState, remote: PlayerIndex, payload: Resy
   next.phase = payload.phase;
   next.memory = clampMemory(payload.memory);
   next.nextId = payload.nextId;
+  next.mode = payload.mode ?? 'manual';
+  next.pending = payload.pending ?? null;
+  next.winner = payload.winner ?? null;
+  next.winReason = payload.winReason ?? null;
   next.players[remote] = { ...(JSON.parse(JSON.stringify(payload.board)) as PlayerState), name: state.players[remote].name };
   return next;
 }

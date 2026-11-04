@@ -65,6 +65,17 @@ const STARTER_OPPONENT = 'starter';
             </select>
           </label>
 
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="text-muted">Rules</span>
+            <select
+              class="rounded-lg border border-line bg-ink-2 p-2 text-fg"
+              [value]="rules()"
+              (change)="rules.set($any($event.target).value)">
+              <option value="assisted" [selected]="rules() === 'assisted'">Assisted (enforces the base rules)</option>
+              <option value="manual" [selected]="rules() === 'manual'">Manual (free sandbox)</option>
+            </select>
+          </label>
+
           @if (decks().length === 0) {
             <p class="m-0 text-xs text-muted">
               No saved decks found. Save a deck in the deck builder to play with it. Starter decks are random until then.
@@ -123,6 +134,8 @@ export class PlayLobbyComponent {
   protected readonly cardsReady = computed(() => this.cardStore.cards().length > 0);
   protected readonly myDeckId = signal<string>('');
   protected readonly opponentId = signal<string>(RANDOM_OPPONENT);
+  /** Solo rules choice. Assisted is the default. */
+  protected readonly rules = signal<'assisted' | 'manual'>('assisted');
   protected readonly error = signal<string | null>(null);
   /** The selected deck, falling back to the first saved deck so the select and the start action agree. */
   protected readonly myDeck = computed(() => this.decks().find((d) => d.id === this.myDeckId()) ?? this.decks()[0] ?? null);
@@ -171,6 +184,7 @@ export class PlayLobbyComponent {
     this.session.start({
       decks: [p1, p2],
       names: [mine ? deckLabel(mine) : 'Player 1', theirs ? deckLabel(theirs) : 'Starter deck'],
+      mode: this.rules(),
     });
     void this.router.navigateByUrl('/play/table');
   }

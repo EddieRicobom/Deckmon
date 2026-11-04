@@ -7,6 +7,11 @@ import { allCards, dealBoard, stackDpMod, getStack, locateCard, locateStack, pil
 import { nextRandom, shuffle } from './rng';
 import { HIDDEN_CARD_ID } from './view';
 import { cardLabel } from './labels';
+import { cardInfo } from './rules/card-data';
+import { assistedError } from './rules/validate';
+import { passTurnRuled, autoEndTurnIfNeeded } from './rules/turn';
+import { declareAttack, resolveBlock, securityCheck } from './rules/combat';
+import { digivolveCost, drawOne, payCost, remind } from './rules/helpers';
 import {
   CardRef,
   GameState,
@@ -46,6 +51,12 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     state.log.push({ seq: state.log.length, turn: state.turn, player: cmd.player, text });
   };
   const mintStackId = (): string => `s${state.nextId++}`;
+
+  // Assisted mode: reject illegal commands before anything changes. Force skips the rules for this command.
+  const err = assistedError(state, cmd);
+  if (err) throw new Error(err);
+  const ruled = state.mode === 'assisted' && !cmd.force;
+  if (state.mode === 'assisted' && cmd.force) say(`Override: ${cmd.type} applied without the rules.`);
 
   switch (cmd.type) {
     // ---- setup / turn structure ---------------------------------------------------------
@@ -89,6 +100,11 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     }
 
     case 'nextPhase': {
+      if (ruled) {
+        state.phase = 'main';
+        say('Phase: main.');
+        break;
+      }
       const idx = PHASES.indexOf(state.phase);
       if (idx === PHASES.length - 1) throw new Error('Already at the end phase. End the turn to continue.');
       state.phase = PHASES[idx + 1];
@@ -97,6 +113,10 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
     }
 
     case 'passTurn': {
+      if (ruled) {
+        passTurnRuled(state, cmd.memory ?? DEFAULT_PASS_MEMORY);
+        break;
+      }
       const next: PlayerIndex = state.activePlayer === 0 ? 1 : 0;
       const memory = clampMemory(cmd.memory ?? DEFAULT_PASS_MEMORY);
       const cleared = clearTemporary(state);
@@ -149,35 +169,78 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
       if (!egg) throw new Error(`${who}'s egg deck is empty`);
       p.breeding = { stackId: mintStackId(), cards: [egg], suspended: false, dpMod: 0 };
       say(`${who} hatched an egg (${cardLabel(egg.cardId)}).`);
+      if (ruled) state.phase = 'main';
       break;
     }
 
     case 'moveBreedingToBattle': {
       if (!p.breeding) throw new Error('Breeding area is empty');
       p.battle.push(p.breeding);
+      p.battle[p.battle.length - 1].enteredTurn = state.turn;
       const top = p.breeding.cards[p.breeding.cards.length - 1];
       p.breeding = null;
       say(`${who} moved ${top ? cardLabel(top.cardId) : 'a digimon'} from breeding to battle.`);
+      if (ruled) state.phase = 'main';
       break;
     }
 
     case 'playFromHand': {
       const card = takeFromHand(p, cmd.uid);
+      const info = cardInfo(card.cardId);
+      if (ruled && cmd.to === 'option') {
+        payCost(state, info?.playCost ?? 0);
+        p.trash.push(card);
+        say(`${who} played option ${cardLabel(card.cardId)} (effect applied by hand, then trashed).`);
+        remind(state, cmd.player, card.cardId, 'Main');
+        break;
+      }
       const stack = newStack(mintStackId(), [card]);
+      stack.enteredTurn = state.turn;
       (cmd.to === 'battle' ? p.battle : cmd.to === 'tamer' ? p.tamer : p.option).push(stack);
       say(`${who} played ${cardLabel(card.cardId)} to the ${cmd.to} area.`);
+      if (ruled) {
+        payCost(state, info?.playCost ?? 0);
+        remind(state, cmd.player, card.cardId, 'On Play');
+      }
       break;
     }
 
     case 'digivolve': {
       const card = takeFromHand(p, cmd.handUid);
-      const stack = p.battle.find((s) => s.stackId === cmd.onto);
+      const stack = p.battle.find((s) => s.stackId === cmd.onto) ?? (p.breeding?.stackId === cmd.onto ? p.breeding : undefined);
       if (!stack) {
         // Put the card back so a failed command leaves no trace (the clone is discarded anyway).
-        throw new Error('Digivolution target is not in the battle area');
+        throw new Error('Digivolution target is not in the battle or breeding area');
+      }
+      const info = cardInfo(card.cardId);
+      if (ruled) {
+        const cost = info ? digivolveCost(stack, info) : null;
+        if (cost === null) throw new Error('Digivolution condition not met');
+        payCost(state, cost);
       }
       stack.cards.push(card);
       say(`${who} digivolved into ${cardLabel(card.cardId)}.`);
+      if (ruled) {
+        remind(state, cmd.player, card.cardId, 'When Digivolving');
+        drawOne(state, cmd.player);
+      }
+      break;
+    }
+
+    // ---- combat (assisted) ------------------------------------------------------------------
+    case 'attack': {
+      if (state.mode !== 'assisted') throw new Error('Attacks are resolved in Assisted rules mode.');
+      declareAttack(state, cmd);
+      break;
+    }
+
+    case 'resolveBlock': {
+      resolveBlock(state, cmd.blockerStackId);
+      break;
+    }
+
+    case 'securityCheck': {
+      securityCheck(state);
       break;
     }
 
@@ -321,6 +384,8 @@ export function applyCommand(input: GameState, cmd: Command): GameState {
   }
 
   if (cmd.board) state.players[cmd.player] = JSON.parse(JSON.stringify(cmd.board)) as PlayerState;
+  // Memory on the opponent's side after an action ends the turn (assisted, main phase, nothing pending).
+  if (ruled) autoEndTurnIfNeeded(state);
   return state;
 }
 

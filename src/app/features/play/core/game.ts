@@ -2,7 +2,7 @@
  * Game construction and state helpers shared by the reducer and the views.
  */
 import { shuffle, normaliseSeed } from './rng';
-import { CardRef, GameState, PlayerIndex, PlayerState, PileZone, STATE_VERSION, Stack, StackZone, Zone, SecurityCard } from './types';
+import { CardRef, GameState, PlayerIndex, PlayerState, PileZone, RulesMode, STATE_VERSION, Stack, StackZone, Zone, SecurityCard } from './types';
 
 /** One line of a deck list. `cardType` decides whether the card goes to the egg deck. */
 export interface DeckListEntry {
@@ -127,6 +127,7 @@ export function createGame(
   deck0: readonly DeckListEntry[],
   deck1: readonly DeckListEntry[],
   names: [string, string] = ['Player 1', 'Player 2'],
+  mode: RulesMode = 'manual',
 ): GameState {
   const s = normaliseSeed(seed);
   const build = (idx: PlayerIndex, entries: readonly DeckListEntry[], name: string): PlayerState => {
@@ -140,12 +141,18 @@ export function createGame(
   rngState = dealt1.rngState;
 
   return {
+    mode,
+    pending: null,
+    winner: null,
+    winReason: null,
+    reminders: [],
     seed: s,
     rngState,
     nextId: 1,
     turn: 1,
     activePlayer: 0,
-    phase: 'unsuspend',
+    // Assisted turn 1: unsuspend has nothing to do and the first player skips the draw, so play starts at breeding.
+    phase: mode === 'assisted' ? 'breeding' : 'unsuspend',
     memory: 0,
     players: [dealt0.player, dealt1.player],
     log: [{ seq: 0, turn: 1, player: 0, text: `Game started. ${names[0]} vs ${names[1]}.` }],
