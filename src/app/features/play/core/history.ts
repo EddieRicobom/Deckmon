@@ -28,10 +28,12 @@ export interface GameHistory {
   present: GameState;
   /** Undone steps, most recently undone last. */
   future: RedoStep[];
+  /** marks[k] = the log length before commands[k], so the log panel can rewind to a log entry. */
+  marks: number[];
 }
 
 export function createHistory(initial: GameState): GameHistory {
-  return { initial, commands: [], past: [], learned: [], present: initial, future: [] };
+  return { initial, commands: [], past: [], learned: [], present: initial, future: [], marks: [] };
 }
 
 /**
@@ -65,7 +67,15 @@ export function dispatch(history: GameHistory, cmd: Command, viewer: PlayerIndex
   const next = applyCommand(history.present, cmd);
   const flag = learnedInStep(history.present, next, viewer);
   const [past, learned] = withSnapshot(history.past, history.learned, history.present, flag);
-  return { initial: history.initial, commands: [...history.commands, cmd], past, learned, present: next, future: [] };
+  return {
+    initial: history.initial,
+    commands: [...history.commands, cmd],
+    past,
+    learned,
+    present: next,
+    future: [],
+    marks: [...history.marks, history.present.log.length],
+  };
 }
 
 export function canUndo(history: GameHistory): boolean {
@@ -101,6 +111,7 @@ export function undo(history: GameHistory, steps = 1): GameHistory {
       learned: h.learned.slice(0, last),
       present: h.past[last],
       future: [...h.future, { command: h.commands[cmdIdx], state: h.present, learned: h.learned[last] }],
+      marks: h.marks.slice(0, cmdIdx),
     };
   }
   return h;
@@ -128,6 +139,7 @@ export function redo(history: GameHistory): GameHistory {
     learned,
     present: step.state,
     future: history.future.slice(0, -1),
+    marks: [...history.marks, history.present.log.length],
   };
 }
 

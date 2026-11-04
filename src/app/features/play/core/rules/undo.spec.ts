@@ -158,3 +158,19 @@ describe('history cap', () => {
     expect(undo(h, 100).commands.length).toBe(5);
   });
 });
+
+describe('log marks (rewind to a log entry)', () => {
+  it('records the log length before each command, and follows undo and redo', () => {
+    const base = game();
+    let h: GameHistory = createHistory(base);
+    h = dispatch(h, play('p0-h1'), 0);
+    const afterFirst = h.present.log.length;
+    h = dispatch(h, play('p0-h2'), 0);
+    expect(h.marks).toEqual([base.log.length, afterFirst]);
+
+    const back = undo(h, 1);
+    expect(back.marks).toEqual([base.log.length]);
+    const again = redo(back);
+    expect(again.marks).toEqual([base.log.length, afterFirst]);
+  });
+});

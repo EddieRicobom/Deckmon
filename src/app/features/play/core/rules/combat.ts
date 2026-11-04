@@ -18,7 +18,7 @@ import {
   stackName,
 } from './helpers';
 import { cardLabel } from '../labels';
-import { GameState, PlayerIndex } from '../types';
+import { CombatResult, GameState, PlayerIndex } from '../types';
 
 export type AttackCommand = Extract<Command, { type: 'attack' }>;
 
@@ -116,18 +116,42 @@ export function securityCheck(state: GameState): void {
 
   let attackerGone = false;
   const attacker = findStack(state.players[atk], pending.attackerStackId);
+  const revealed = cardLabel(sec.cardId);
   if (!attacker) {
     attackerGone = true;
   } else if (info?.kind === 'digimon') {
     const atkDp = stackDp(attacker);
     const secDp = info.dp;
     log(state, atk, `Security Digimon (${secDp} DP) battles ${stackName(attacker)} (${atkDp} DP).`);
-    if (atkDp <= secDp && !hasKeyword(attacker, 'Jamming')) {
+    const deleted = atkDp <= secDp && !hasKeyword(attacker, 'Jamming');
+    setCombat(state, {
+      kind: 'security',
+      attacker: atk,
+      attackerName: stackName(attacker),
+      attackerDp: atkDp,
+      defenderName: revealed,
+      defenderDp: secDp,
+      revealedCardId: sec.cardId,
+      attackerDeleted: deleted,
+      defenderDeleted: false,
+    });
+    if (deleted) {
       deleteOwnStack(state, atk, attacker.stackId);
       attackerGone = true;
     }
   } else {
     remind(state, def, sec.cardId, 'Security');
+    setCombat(state, {
+      kind: 'security',
+      attacker: atk,
+      attackerName: stackName(attacker),
+      attackerDp: stackDp(attacker),
+      defenderName: revealed,
+      defenderDp: null,
+      revealedCardId: sec.cardId,
+      attackerDeleted: false,
+      defenderDeleted: false,
+    });
   }
 
   if (attackerGone) {
@@ -167,7 +191,24 @@ export function battle(
   if (attackerDeleted && hasKeyword(a, 'Retaliation')) defenderDeleted = true;
   if (defenderDeleted && hasKeyword(d, 'Retaliation')) attackerDeleted = true;
   log(state, atkOwner, `Battle: ${ad} DP vs ${dd} DP.`);
+  setCombat(state, {
+    kind: 'battle',
+    attacker: atkOwner,
+    attackerName: stackName(a),
+    attackerDp: ad,
+    defenderName: stackName(d),
+    defenderDp: dd,
+    attackerDeleted,
+    defenderDeleted,
+  });
   if (attackerDeleted) deleteOwnStack(state, atkOwner, atkId);
   if (defenderDeleted) deleteOwnStack(state, defOwner, defId);
   return { attackerDeleted, defenderDeleted };
+}
+
+type CombatInput = Omit<CombatResult, 'seq'>;
+
+/** Stores the latest combat record. `seq` is the log length now, which only grows. */
+function setCombat(state: GameState, result: CombatInput): void {
+  state.lastCombat = { ...result, seq: state.log.length };
 }

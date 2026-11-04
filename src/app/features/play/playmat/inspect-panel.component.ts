@@ -198,10 +198,28 @@ export function cleanCardText(text: string | undefined | null): string | null {
             }
           </section>
 
-          @if (editable() && actions().length) {
+          @if (editable() && (actions().length || attackItem())) {
             <section class="flex flex-wrap gap-1.5" aria-label="Card actions">
+              @if (attackItem(); as at) {
+                <button
+                  type="button"
+                  class="ip-btn ip-attack"
+                  [disabled]="!!at.disabled"
+                  [title]="at.disabled ?? 'Choose a target for this attack'"
+                  (click)="attack.emit()">
+                  Attack...
+                </button>
+              }
               @for (item of actions(); track $index) {
-                <button type="button" class="ip-btn" [class.ip-danger]="item.danger" (click)="run(item)">{{ item.label }}</button>
+                <button
+                  type="button"
+                  class="ip-btn"
+                  [class.ip-danger]="item.danger"
+                  [disabled]="!!item.disabled"
+                  [title]="item.disabled ?? ''"
+                  (click)="run(item)">
+                  {{ item.label }}
+                </button>
               }
             </section>
           }
@@ -240,6 +258,11 @@ export function cleanCardText(text: string | undefined | null): string | null {
       .ip-danger {
         color: #fca5a5;
       }
+      .ip-attack {
+        border-color: var(--dc-accent, #38bdf8);
+        color: var(--dc-accent, #38bdf8);
+        font-weight: 600;
+      }
       .chip {
         display: inline-flex;
         align-items: center;
@@ -268,10 +291,14 @@ export class InspectPanelComponent {
   readonly variant = input<'side' | 'sheet'>('side');
   /** False when the board belongs to the opponent online: the panel then only shows the card. */
   readonly editable = input(true);
+  /** Assisted Force is on: the action buttons are not limited by the rules. */
+  readonly force = input(false);
 
   /** Commands from inline controls and action buttons. The playmat sends them through the session. */
   readonly issue = output<Command>();
   readonly closed = output<void>();
+  /** The Attack button: the playmat starts target selection for this stack. */
+  readonly attack = output<void>();
 
   protected readonly cardBack = 'assets/images/digimon-card-back.webp';
   protected readonly presets = MARKER_PRESETS;
@@ -329,7 +356,12 @@ export class InspectPanelComponent {
 
   /** Action buttons from the same menu the right-click menu uses. DP and marker entries are inline instead. */
   readonly actions = computed<MenuItem[]>(() =>
-    menuItemsFor(this.target(), this.state()).filter((i) => !!i.cmd && i.group === undefined),
+    menuItemsFor(this.target(), this.state(), this.force()).filter((i) => !!i.cmd && i.group === undefined),
+  );
+
+  /** The attack entry, when this target is a battle Digimon in assisted mode. Its `disabled` is the reason. */
+  readonly attackItem = computed<MenuItem | null>(
+    () => menuItemsFor(this.target(), this.state(), this.force()).find((i) => i.attack) ?? null,
   );
 
   dp(sign: 1 | -1, event: MouseEvent): void {

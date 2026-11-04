@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, input, signal } from '@angular/core';
 import { DeckListEntry } from './core/game';
+import type { RulesMode } from './core/types';
 import { OnlineMatchService } from './online-match.service';
 import { PvpService } from './net/pvp.service';
 import type { RoomAd } from './net/rooms';
@@ -63,6 +64,13 @@ import type { RoomAd } from './net/rooms';
             <label class="flex flex-col gap-1 text-sm">
               <span class="text-muted">Password (optional)</span>
               <input class="rounded-lg border border-line bg-ink-2 p-2 text-fg" type="password" maxlength="64" [value]="password()" (input)="password.set($any($event.target).value)" />
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-muted">Rules (the guest plays your choice)</span>
+              <select class="rounded-lg border border-line bg-ink-2 p-2 text-fg" [value]="rules()" (change)="rules.set($any($event.target).value)">
+                <option value="assisted">Assisted (recommended)</option>
+                <option value="manual">Manual (free sandbox)</option>
+              </select>
             </label>
             <label class="flex items-center gap-2 text-sm text-fg">
               <input type="checkbox" [checked]="isPublic()" (change)="isPublic.set($any($event.target).checked)" />
@@ -179,6 +187,7 @@ export class OnlinePanelComponent implements OnInit, OnDestroy {
   protected readonly tab = signal<'host' | 'join'>('host');
   protected readonly roomName = signal('');
   protected readonly isPublic = signal(true);
+  protected readonly rules = signal<RulesMode>('assisted');
   protected readonly password = signal('');
   protected readonly joinCode = signal('');
   protected readonly joinPassword = signal('');
@@ -205,6 +214,7 @@ export class OnlinePanelComponent implements OnInit, OnDestroy {
       roomName: this.roomName().trim() || `${this.match.localName() || 'Tamer'}'s room`,
       isPublic: this.isPublic(),
       password: this.password(),
+      mode: this.rules(),
     });
   }
 
@@ -230,6 +240,7 @@ export class OnlinePanelComponent implements OnInit, OnDestroy {
       roomName: '',
       isPublic: false,
       password: '',
+      mode: this.rules(),
     });
     this.offerCode.set(code);
   }

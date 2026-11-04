@@ -217,3 +217,25 @@ describe('online coin flips and dice', () => {
     expect(publicHash(guest)).toBe(publicHash(roll.next));
   });
 });
+
+describe('online rules mode', () => {
+  it('starts both peers in the host rules mode, with the same public view', () => {
+    const hostBoard = createOwnBoard(0, 'Host', deckA, 11);
+    const guestBoard = createOwnBoard(1, 'Guest', deckB, 22);
+    const names: [string, string] = ['Host', 'Guest'];
+    const hostState = createOnlineState({ ownIndex: 0, names, own: hostBoard, seed: 11, rival: redactPlayer(guestBoard.player), mode: 'assisted' });
+    const guestState = createOnlineState({ ownIndex: 1, names, own: guestBoard, seed: 22, rival: redactPlayer(hostBoard.player), mode: 'assisted' });
+    expect(hostState.mode).toBe('assisted');
+    expect(guestState.mode).toBe('assisted');
+    expect(hostState.phase).toBe('breeding');
+    expect(publicHash(hostState)).toBe(publicHash(guestState));
+  });
+
+  it('defaults to manual when no mode is given (older peers)', () => {
+    const hostBoard = createOwnBoard(0, 'Host', deckA, 11);
+    const guestBoard = createOwnBoard(1, 'Guest', deckB, 22);
+    const state = createOnlineState({ ownIndex: 0, names: ['Host', 'Guest'], own: hostBoard, seed: 11, rival: redactPlayer(guestBoard.player) });
+    expect(state.mode).toBe('manual');
+    expect(state.phase).toBe('unsuspend');
+  });
+});

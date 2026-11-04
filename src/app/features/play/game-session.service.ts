@@ -75,6 +75,22 @@ export class GameSession {
   readonly viewer = computed<PlayerIndex>(() => this.localPlayer() ?? this.state()?.activePlayer ?? 0);
   /** Last rejected command, cleared on the next accepted one. */
   readonly lastError = signal<string | null>(null);
+  /** Counts every rejection, so the same message shown twice still produces a new toast. */
+  readonly errorCount = signal(0);
+  /** Assisted manual override: commands skip the rules until it is turned off. Resets on a new game. */
+  readonly force = signal(false);
+  /** The options of the last solo game, for a rematch. */
+  private lastOptions: StartGameOptions | null = null;
+
+  /** Why redo is disabled, shown on the button. Null when redo is available or there is nothing to redo. */
+  readonly redoBlockReason = computed<string | null>(() => {
+    const h = this.history();
+    if (!h || this.canRedo()) return null;
+    if (this.localPlayer() !== null) return 'Redo is only available in solo play. Online steps are already sent to your opponent.';
+    if (this.state()?.pending) return 'A decision is pending.';
+    if (h.future.length === 0) return 'Nothing to redo.';
+    return null;
+  });
 
   start(options: StartGameOptions): void {
     const seed = normaliseSeed(options.seed ?? Date.now() ^ Math.floor(Math.random() * 0xffffffff));
@@ -82,7 +98,27 @@ export class GameSession {
     this.transport = null;
     this.localPlayer.set(null);
     this.history.set(createHistory(state));
+    this.lastOptions = { ...options, seed: undefined };
+    this.force.set(false);
     this.lastError.set(null);
+  }
+
+  /** Solo only: starts a new game with the same decks and names, and a fresh seed. */
+  rematch(): boolean {
+    if (!this.lastOptions || this.localPlayer() !== null) return false;
+    this.start({ ...this.lastOptions });
+    return true;
+  }
+
+  /** Turns the manual override on or off. It only has an effect in assisted mode. */
+  setForce(on: boolean): void {
+    this.force.set(on);
+  }
+
+  /** Shows a rejection to the player. Also used by the table for rejected local actions. */
+  setError(message: string | null): void {
+    this.lastError.set(message);
+    if (message !== null) this.errorCount.update((n) => n + 1);
   }
 
   /** Starts an online game from this device's state (own board real, opponent placeholder). */
@@ -94,15 +130,17 @@ export class GameSession {
   }
 
   /** Applies a command from this client and forwards it to the transport when one is attached. */
-  applyLocal(cmd: Command): boolean {
+  applyLocal(input: Command): boolean {
+    let cmd = input;
+    if (this.force() && this.state()?.mode === 'assisted' && !cmd.force) cmd = { ...cmd, force: true };
     const local = this.localPlayer();
     if (local !== null) {
       if (cmd.player !== local) {
-        this.lastError.set("That board belongs to your opponent.");
+        this.setError("That board belongs to your opponent.");
         return false;
       }
       if (TURN_COMMANDS.has(cmd.type) && this.state()?.activePlayer !== local) {
-        this.lastError.set('Only the active player can change the phase, the turn or memory.');
+        this.setError('Only the active player can change the phase, the turn or memory.');
         return false;
       }
     }
@@ -124,7 +162,7 @@ export class GameSession {
     const remote = this.remote();
     if (remote === null) return false;
     if (!wire || !wire.cmd || wire.cmd.player !== remote) {
-      this.lastError.set('Opponent sent a move for the wrong board.');
+      this.setError('Opponent sent a move for the wrong board.');
       return false;
     }
     const cmd: Command = {
@@ -158,7 +196,7 @@ export class GameSession {
   undo(steps: number | 'all' = 1): boolean {
     const h = this.history();
     if (!h || !this.canUndo()) {
-      if (h && h.commands.length > 0) this.lastError.set(this.undoBlockReason() ?? 'Nothing to undo.');
+      if (h && h.commands.length > 0) this.setError(this.undoBlockReason() ?? 'Nothing to undo.');
       return false;
     }
     const available = this.undoCount();
@@ -184,9 +222,33 @@ export class GameSession {
     const h = this.history();
     if (!h || this.localPlayer() !== null || this.state()?.pending) return false;
     if (length < 0 || length >= h.commands.length) return false;
+    if (h.commands.length - length > h.past.length) {
+      this.setError('Cannot rewind that far: the earlier steps are no longer kept.');
+      return false;
+    }
     this.history.set(rewindTo(h, length));
     this.lastError.set(null);
     return true;
+  }
+
+  /**
+   * Solo "rewind to here" for a log entry: undoes the command that wrote the entry, and everything after it.
+   * Entries from before the first command (the game start) cannot be rewound to.
+   */
+  rewindToLogEntry(logIndex: number): boolean {
+    const target = this.rewindTargetFor(logIndex);
+    return target === null ? false : this.rewindTo(target);
+  }
+
+  /** The command count that "rewind to here" returns to for a log entry, or null when it cannot (solo only). */
+  rewindTargetFor(logIndex: number): number | null {
+    const h = this.history();
+    if (!h || this.localPlayer() !== null || this.state()?.pending) return null;
+    let owner = -1;
+    h.marks.forEach((mark, k) => {
+      if (mark <= logIndex) owner = k;
+    });
+    return owner < 0 ? null : owner;
   }
 
   /**
@@ -214,11 +276,19 @@ export class GameSession {
     if (!h || this.remote() !== remote) return false;
     try {
       const next = applyResync(h.present, remote, payload);
-      this.history.set({ initial: h.initial, commands: h.commands, past: [], learned: h.learned, present: next, future: [] });
+      this.history.set({
+        initial: h.initial,
+        commands: h.commands,
+        past: [],
+        learned: h.learned,
+        present: next,
+        future: [],
+        marks: h.marks,
+      });
       this.lastError.set(null);
       return true;
     } catch (err) {
-      this.lastError.set(err instanceof Error ? err.message : String(err));
+      this.setError(err instanceof Error ? err.message : String(err));
       return false;
     }
   }
@@ -239,7 +309,7 @@ export class GameSession {
   private apply(cmd: Command): boolean {
     const h = this.history();
     if (!h) {
-      this.lastError.set('No game in progress.');
+      this.setError('No game in progress.');
       return false;
     }
     try {
@@ -247,7 +317,7 @@ export class GameSession {
       this.lastError.set(null);
       return true;
     } catch (err) {
-      this.lastError.set(err instanceof Error ? err.message : String(err));
+      this.setError(err instanceof Error ? err.message : String(err));
       return false;
     }
   }

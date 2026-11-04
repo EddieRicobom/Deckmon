@@ -19,7 +19,7 @@ export type NetMessage =
   | { t: 'pong' }
   | { t: 'resign' }
   /** Opening handshake: the sender's own board, redacted. Sent once per game, after `hello`. */
-  | { t: 'setup'; board: unknown }
+  | { t: 'setup'; board: unknown; mode?: 'assisted' | 'manual' }
   /** Takes back the sender's last command. `count` is the sender's command count before the undo. */
   | { t: 'undo'; count: number }
   /** Active player's resynchronisation: shared fields plus its own redacted board. */
@@ -95,7 +95,9 @@ export function decodeNetMessage(raw: string): NetMessage | null {
     case 'setup': {
       const board = o['board'];
       if (!board || typeof board !== 'object' || Array.isArray(board)) return null;
-      return { t: 'setup', board };
+      // The host's rules choice. Anything else (or absent, from an older client) means manual.
+      const mode = o['mode'] === 'assisted' ? 'assisted' : o['mode'] === 'manual' ? 'manual' : undefined;
+      return mode ? { t: 'setup', board, mode } : { t: 'setup', board };
     }
     case 'undo': {
       const count = uint(o['count']);

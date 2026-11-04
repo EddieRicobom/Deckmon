@@ -2,7 +2,7 @@ import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { DeckListEntry } from './core/game';
 import { redactPlayer } from './core/view';
-import { GameState, PlayerIndex, PlayerState } from './core/types';
+import { GameState, PlayerIndex, PlayerState, RulesMode } from './core/types';
 import { ResyncPayload, WireCommand, createOnlineState, createOwnBoard, publicHash, resyncPayload } from './core/wire';
 import { GameSession, CommandTransport } from './game-session.service';
 import { PvpError } from './net/errors';
@@ -26,6 +26,8 @@ export interface HostSetup {
   roomName: string;
   isPublic: boolean;
   password: string;
+  /** The rules both players use. Defaults to assisted. The guest plays the host's choice. */
+  mode?: RulesMode;
 }
 
 export interface JoinSetup {
@@ -152,6 +154,8 @@ export class OnlineMatchService implements OnDestroy {
   private entries: DeckListEntry[] = [];
   private ownBoard: { player: PlayerState; rngState: number; seed: number } | null = null;
   private rival: PlayerState | null = null;
+  /** The rules of this match: the host's choice, received by the guest in the setup message. */
+  private matchMode: RulesMode = 'assisted';
   private readonly myHashes = new Map<number, string>();
   private readonly peerHashes = new Map<number, string>();
   private readonly unsubs: Array<() => void> = [];
@@ -178,6 +182,7 @@ export class OnlineMatchService implements OnDestroy {
   /** Opens a room. Once a guest connects, the handshake starts the game. */
   host(setup: HostSetup): void {
     if (!this.begin('host', setup)) return;
+    this.matchMode = setup.mode ?? 'assisted';
     this.phase.set('waiting');
     this.pvp
       .hostRoom({
@@ -196,6 +201,7 @@ export class OnlineMatchService implements OnDestroy {
   /** Manual flow, host side: creates an offer (no brokers). Returns the code to copy to the guest. */
   async manualOffer(setup: HostSetup): Promise<string | null> {
     if (!this.begin('host', setup)) return null;
+    this.matchMode = setup.mode ?? 'assisted';
     this.phase.set('waiting');
     try {
       return await this.pvp.createManualOffer();
@@ -270,7 +276,7 @@ export class OnlineMatchService implements OnDestroy {
     const me = this.session.localPlayer();
     if (!state || me === null) return;
     if (state.activePlayer !== me) {
-      this.session.lastError.set('Only the active player can resynchronise the table.');
+      this.session.setError('Only the active player can resynchronise the table.');
       return;
     }
     this.pvp.send({ t: 'resync', payload: resyncPayload(state, me) });
@@ -281,7 +287,7 @@ export class OnlineMatchService implements OnDestroy {
 
   private onLocalMove(wire: WireCommand): void {
     if (!this.pvp.send({ t: 'cmd', seq: 0, cmd: wire })) {
-      this.session.lastError.set('Too many moves are waiting for the opponent. Reconnect and try again.');
+      this.session.setError('Too many moves are waiting for the opponent. Reconnect and try again.');
       this.desync.set(true);
     }
     this.recordHash();
@@ -301,6 +307,8 @@ export class OnlineMatchService implements OnDestroy {
         if (this.phase() === 'playing' || remote === null) return;
         const board = parseBoard(msg.board, remote);
         if (!board) return;
+        // The guest adopts the host's rules. The host keeps its own choice.
+        if (this.role() === 'guest') this.matchMode = msg.mode ?? 'manual';
         this.rival = board;
         this.remoteName.set(board.name);
         this.ensureOwnBoard();
@@ -359,7 +367,7 @@ export class OnlineMatchService implements OnDestroy {
     this.ensureOwnBoard();
     this.phase.set('handshake');
     if (this.ownBoard) {
-      this.pvp.send({ t: 'setup', board: redactPlayer(this.ownBoard.player) });
+      this.pvp.send({ t: 'setup', board: redactPlayer(this.ownBoard.player), mode: this.matchMode });
     }
   }
 
@@ -413,6 +421,7 @@ export class OnlineMatchService implements OnDestroy {
       own: this.ownBoard,
       seed: this.ownBoard.seed,
       rival: this.rival,
+      mode: this.matchMode,
     });
     this.session.startOnline(state, ownIndex, this.transport);
     this.myHashes.clear();

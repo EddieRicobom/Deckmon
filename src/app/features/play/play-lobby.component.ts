@@ -71,7 +71,7 @@ const STARTER_OPPONENT = 'starter';
               class="rounded-lg border border-line bg-ink-2 p-2 text-fg"
               [value]="rules()"
               (change)="rules.set($any($event.target).value)">
-              <option value="assisted" [selected]="rules() === 'assisted'">Assisted (enforces the base rules)</option>
+              <option value="assisted" [selected]="rules() === 'assisted'">Assisted (recommended)</option>
               <option value="manual" [selected]="rules() === 'manual'">Manual (free sandbox)</option>
             </select>
           </label>

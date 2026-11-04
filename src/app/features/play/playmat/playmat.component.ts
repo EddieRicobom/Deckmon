@@ -1,24 +1,52 @@
+import { CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
 import { Command } from '../core/commands';
 import { allCards, getStack } from '../core/game';
-import { setCardNameResolver } from '../core/labels';
-import { registerCardRecords } from '../core/rules/card-data';
-import { GameState, MEMORY_MAX, MEMORY_MIN, PHASES, Phase, PlayerIndex } from '../core/types';
+import { cardLabel, setCardNameResolver } from '../core/labels';
+import { cardInfo, registerCardRecords } from '../core/rules/card-data';
+import { digivolveCost, other, stackDp } from '../core/rules/helpers';
+import { assistedError } from '../core/rules/validate';
+import { CombatResult, GameState, MEMORY_MAX, MEMORY_MIN, PHASES, Phase, PlayerIndex, Stack } from '../core/types';
 import { redactFor, HIDDEN_CARD_ID } from '../core/view';
 import { GameSession } from '../game-session.service';
-import { menuItemsFor, MenuItem, MenuTarget } from './menu-items';
+import { OnlineMatchService } from '../online-match.service';
+import { attackReason, menuItemsFor, MenuItem, MenuTarget } from './menu-items';
 import { InspectPanelComponent } from './inspect-panel.component';
 import { OnlineBarComponent } from './online-bar.component';
 import { HoverInfo, PlayerBoardComponent } from './player-board.component';
+import { ReminderToastsComponent } from './reminder-toasts.component';
 
 interface OpenMenu {
   x: number;
   y: number;
   target: MenuTarget;
   items: MenuItem[];
+}
+
+/** An attack being aimed: the attacking battle stack and its owner. */
+interface AttackPlan {
+  owner: PlayerIndex;
+  stackId: string;
+}
+
+interface Notice {
+  id: number;
+  text: string;
+  tone: 'error' | 'info';
+}
+
+/** The security check shown big on screen. */
+interface SecurityFlash {
+  cardId: string;
+  lines: string[];
+}
+
+interface Outcome {
+  headline: string;
+  reason: string;
 }
 
 const PHASE_LABELS: Record<Phase, string> = {
@@ -35,6 +63,12 @@ const HOVER_DELAY_MS = 150;
 const HOVER_WIDTH_PX = 190;
 const CARD_RATIO = 88 / 63;
 const DEFAULT_NEXT_MEMORY = 3;
+const TURN_BANNER_MS = 1000;
+const PHASE_FLASH_MS = 900;
+const SECURITY_FLASH_MS = 1500;
+const NOTICE_MS = 4500;
+const MAX_NOTICES = 3;
+const CARD_BACK = 'assets/images/digimon-card-back.webp';
 
 /** A media query as a signal. Falls back to false where matchMedia is not available. */
 function media(query: string) {
@@ -52,23 +86,35 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
   return true;
 }
 
+/** Display name of a stack's top card. */
+function topName(stack: Stack | null | undefined): string {
+  const top = stack?.cards[stack.cards.length - 1];
+  return top ? cardLabel(top.cardId) : 'Digimon';
+}
+
+function attackCmd(plan: AttackPlan, target: { kind: 'player' } | { kind: 'stack'; stackId: string }): Command {
+  return { type: 'attack', player: plan.owner, attackerStackId: plan.stackId, target };
+}
+
 @Component({
   selector: 'digimon-playmat',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [NgClass, NgTemplateOutlet, RouterLink, PlayerBoardComponent, OnlineBarComponent, InspectPanelComponent],
+  imports: [NgClass, NgTemplateOutlet, RouterLink, CdkDropListGroup, PlayerBoardComponent, OnlineBarComponent, InspectPanelComponent, ReminderToastsComponent],
   template: `
     <!-- Shared fragments, used inline on desktop and inside the "more" sheet on phones -->
     <ng-template #phasesTpl>
       @if (state(); as s) {
         @for (ph of phases; track ph) {
           <span
-            class="rounded px-2 py-0.5 text-xs"
+            class="inline-block rounded px-2 py-0.5 text-xs transition-colors duration-300"
             [class.bg-accent]="ph === s.phase"
             [class.text-accent-ink]="ph === s.phase"
             [class.font-bold]="ph === s.phase"
             [class.bg-ink-2]="ph !== s.phase"
             [class.text-muted]="ph !== s.phase"
+            [class.phase-flash]="flashPhase() === ph"
+            [attr.aria-current]="ph === s.phase ? 'step' : null"
             >{{ phaseLabel(ph) }}</span
           >
         }
@@ -88,6 +134,18 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
       <span class="mx-1 h-4 w-px bg-line" aria-hidden="true"></span>
       <button type="button" class="btn-play" (click)="quick({ type: 'flipCoin', player: bottom() })">Flip coin</button>
       <button type="button" class="btn-play" (click)="quick({ type: 'rollDice', player: bottom(), sides: 6 })">Roll d6</button>
+      @if (state()?.mode === 'assisted') {
+        <span class="mx-1 h-4 w-px bg-line" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="btn-play"
+          [class.btn-force]="force()"
+          [attr.aria-pressed]="force()"
+          (click)="toggleForce()"
+          title="Force: board edits skip the assisted rules. Each use is logged as an override.">
+          Force{{ force() ? ': on' : '' }}
+        </button>
+      }
     </ng-template>
     <ng-template #payTpl>
       <span class="text-muted">Active pays</span>
@@ -99,37 +157,125 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
         <button type="button" class="btn-play px-2 py-0" (click)="changeMemory(n)">Gain {{ n }}</button>
       }
     </ng-template>
+    <!-- The log: each entry is a command's text. Solo only: a selected entry offers "Rewind to here". -->
+    <ng-template #logTpl>
+      @if (state(); as s) {
+        <ol class="m-0 flex min-h-0 flex-1 list-none flex-col-reverse gap-1 overflow-y-auto p-0">
+          @for (entry of s.log; track entry.seq) {
+            <li class="border-b border-line/50 pb-1 text-muted">
+              @if (rewindable(entry.seq)) {
+                <button
+                  type="button"
+                  class="block w-full rounded text-left hover:bg-white/5"
+                  [attr.aria-expanded]="logSelected() === entry.seq"
+                  (click)="selectLog(entry.seq)">
+                  <span class="font-mono text-[10px] text-accent">T{{ entry.turn }}</span>
+                  <span class="text-fg"> {{ entry.text }}</span>
+                </button>
+                @if (logSelected() === entry.seq) {
+                  <button type="button" class="btn-play mt-1 px-2 py-0 text-[11px]" (click)="rewindHere(entry.seq)">Rewind to here</button>
+                }
+              } @else {
+                <span class="font-mono text-[10px] text-accent">T{{ entry.turn }}</span>
+                <span class="text-fg"> {{ entry.text }}</span>
+              }
+            </li>
+          }
+        </ol>
+      }
+    </ng-template>
 
     @if (state(); as s) {
-      @if (s.winner !== null && s.winner !== undefined) {
-        <div class="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+      @if (outcome(); as out) {
+        <div class="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="outcome-title">
           <div class="w-full max-w-sm rounded-xl border border-line bg-ink-1 p-5 text-center">
-            <h2 class="m-0 text-xl font-semibold text-fg">Game over</h2>
-            <p class="mt-2 text-sm text-muted">{{ s.players[s.winner].name }} wins: {{ s.winReason }}</p>
-            <button type="button" class="btn-play mt-4" (click)="backToLobby()">Back to the lobby for a rematch</button>
+            <h2 id="outcome-title" class="m-0 font-display text-2xl font-bold text-fg">{{ out.headline }}</h2>
+            <p class="mt-2 text-sm text-muted">{{ out.reason }}</p>
+            <div class="mt-4 flex flex-wrap justify-center gap-2">
+              @if (!online()) {
+                <button type="button" class="btn-play btn-primary" (click)="rematch()">Rematch</button>
+              }
+              <button type="button" class="btn-play" (click)="backToLobby()">Back to lobby</button>
+            </div>
           </div>
         </div>
       }
-      @if (s.pending; as p) {
-        <div class="fixed inset-x-2 top-14 z-[450] mx-auto flex max-w-md flex-wrap items-center gap-2 rounded-lg border border-accent bg-ink-1 p-3 text-sm text-fg" role="status">
-          @if (p.kind === 'block') {
-            <span>{{ s.players[p.owner].name }}, block the attack with a Blocker?</span>
-            @if (canDecide(p.owner)) {
-              @for (id of p.blockers; track id; let i = $index) {
-                <button type="button" class="btn-play" (click)="resolveBlock(id)">Blocker {{ i + 1 }}</button>
-              }
-              <button type="button" class="btn-play" (click)="resolveBlock(null)">No block</button>
-            }
-          } @else {
-            <span>Security check for {{ s.players[p.owner].name }}: {{ p.remaining }} left, resolving.</span>
-          }
+
+      @if (turnBanner(); as banner) {
+        <div class="pointer-events-none fixed inset-x-0 top-1/3 z-[480] flex justify-center" aria-live="assertive">
+          <div class="turn-banner rounded-xl border border-accent bg-ink-1/95 px-8 py-4 font-display text-2xl font-bold text-fg shadow-2xl">
+            {{ banner }}
+          </div>
         </div>
       }
+
+      @if (securityFlash(); as flash) {
+        <div class="pointer-events-none fixed inset-0 z-[490] flex flex-col items-center justify-center gap-3 bg-black/50 p-4" aria-live="assertive">
+          <img [src]="cardImage(flash.cardId)" alt="" class="security-flip w-48 max-w-[60vw] rounded-xl shadow-2xl shadow-black/70" />
+          <div class="max-w-sm rounded-lg border border-line bg-ink-1/95 p-3 text-center text-sm text-fg">
+            @for (line of flash.lines; track $index) {
+              <p class="m-0 leading-snug">{{ line }}</p>
+            }
+          </div>
+        </div>
+      }
+
+      @if (s.pending; as p) {
+        @if (p.kind === 'block' && canDecide(p.owner)) {
+          <div class="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="block-title">
+            <div class="w-full max-w-md rounded-xl border border-accent bg-ink-1 p-4 text-sm text-fg">
+              <h2 id="block-title" class="m-0 text-base font-semibold">Block the attack?</h2>
+              <p class="mt-1 text-muted">
+                {{ topName(findStack(s, p.attacker, p.attackerStackId)) }} attacks {{ s.players[p.owner].name }}. Choose a
+                Blocker to take the hit, or take the attack.
+              </p>
+              <ul class="m-0 mt-3 flex list-none flex-col gap-1.5 p-0">
+                @for (id of p.blockers; track id) {
+                  <li>
+                    <button type="button" class="btn-play w-full justify-between" (click)="resolveBlock(id)">
+                      <span class="truncate">{{ topName(findStack(s, p.owner, id)) }}</span>
+                      <span class="font-mono">DP {{ dpOfStack(s, p.owner, id) }}</span>
+                    </button>
+                  </li>
+                }
+              </ul>
+              <button type="button" class="btn-play mt-3 w-full" (click)="resolveBlock(null)">No block (take the attack)</button>
+            </div>
+          </div>
+        } @else if (p.kind === 'block') {
+          <div class="fixed inset-x-2 top-14 z-[450] mx-auto flex max-w-md items-center gap-2 rounded-lg border border-accent bg-ink-1 p-3 text-sm text-fg" role="status">
+            Waiting for {{ s.players[p.owner].name }} to decide whether to block.
+          </div>
+        } @else {
+          <div class="fixed inset-x-2 top-14 z-[450] mx-auto flex max-w-md items-center gap-2 rounded-lg border border-accent bg-ink-1 p-3 text-sm text-fg" role="status">
+            Security check for {{ s.players[p.owner].name }}: {{ p.remaining }} left, resolving.
+          </div>
+        }
+      }
+
+      <!-- Attack target selection: the hint is always visible, Attack player is the touch route to the player -->
+      @if (activeTarget(); as t) {
+        <div
+          class="fixed left-1/2 z-[465] flex max-w-[calc(100vw-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-accent bg-ink-1 p-2 text-xs text-fg shadow-xl"
+          [ngClass]="compact() ? 'top-[3.75rem]' : 'top-16'"
+          role="status">
+          @if (targetHint(); as hint) {
+            <span>{{ hint }}</span>
+          }
+          @if (playerTargetable()) {
+            <button type="button" class="btn-play btn-primary" (click)="onTargetPick(null)">Attack {{ s.players[other(t.owner)].name }}</button>
+          }
+          <button type="button" class="btn-play" (click)="cancelAttack()">Cancel (Esc)</button>
+        </div>
+      }
+
       <div
+        cdkDropListGroup
         class="relative mx-auto flex h-[calc(var(--app-vh)-3.5rem)] w-full max-w-[100rem] flex-col gap-2 overflow-x-hidden px-2 py-2 md:h-[calc(var(--app-vh)-5rem)] md:px-4"
         [class.overflow-hidden]="compact()"
         [class.overflow-y-auto]="!compact()"
-        [class.pb-56]="pinned() && !wide() && !compact()">
+        [class.pb-56]="pinned() && !wide() && !compact()"
+        [class.force-border]="force() && s.mode === 'assisted'">
         @if (compact()) {
           <!-- Phone and short landscape: one compact row. Everything else lives in the "more" sheet. -->
           <header class="flex h-[3.25rem] shrink-0 items-center gap-1.5 rounded-lg border border-line bg-ink-1 px-2">
@@ -153,6 +299,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
             <button type="button" class="btn-play px-2.5" (click)="undo()" [disabled]="!session.canUndo()" aria-label="Undo" [title]="undoTitle()">
               <i class="pi pi-undo"></i>
             </button>
+            <button type="button" class="btn-play px-2.5" (click)="redo()" [disabled]="!session.canRedo()" aria-label="Redo" [title]="redoTitle()">
+              <i class="pi pi-undo redo-icon"></i>
+            </button>
             <button
               type="button"
               class="btn-play ml-auto px-2.5"
@@ -169,6 +318,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           <span class="rounded bg-ink-2 px-2 py-0.5 text-xs text-muted"
             >Active: <b class="text-fg">{{ s.players[s.activePlayer].name }}</b></span
           >
+          <span class="rounded bg-ink-2 px-2 py-0.5 text-xs text-muted" [attr.title]="s.mode === 'assisted' ? 'Rules enforced by the app' : 'Free sandbox: no rules enforced'"
+            >{{ rulesLabel() }}</span
+          >
           <nav class="flex flex-wrap gap-1" aria-label="Phases">
             <ng-container *ngTemplateOutlet="phasesTpl" />
           </nav>
@@ -177,6 +329,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
             <button type="button" class="btn-play btn-primary" (click)="toggleEndTurn()" [attr.aria-expanded]="endTurnOpen()">End turn</button>
             <button type="button" class="btn-play" (click)="undo()" [disabled]="!session.canUndo()" [title]="undoTitle()">
               <i class="pi pi-undo"></i> Undo
+            </button>
+            <button type="button" class="btn-play" (click)="redo()" [disabled]="!session.canRedo()" [title]="redoTitle()">
+              <i class="pi pi-undo redo-icon"></i> Redo
             </button>
             <button type="button" class="btn-play" (click)="toggleShowAll()" [attr.aria-pressed]="showAll()">
               {{ showAll() ? 'Hide opponent info' : 'Show all cards' }}
@@ -223,15 +378,6 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           </nav>
         }
 
-        @if (session.lastError(); as err) {
-          <button
-            type="button"
-            class="absolute left-1/2 top-14 z-[500] -translate-x-1/2 rounded-lg border border-red-500/60 bg-red-950/90 px-3 py-1.5 text-xs text-red-100"
-            (click)="session.lastError.set(null)">
-            {{ err }}
-          </button>
-        }
-
         <div class="flex min-h-0 flex-1 gap-3">
           <div class="main-col flex min-w-0 flex-1 flex-col gap-2">
             <!-- Opponent: full board, or a compact strip on phones (tap to open the full board) -->
@@ -268,10 +414,14 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                 [owner]="top()"
                 [mirrored]="true"
                 [active]="s.activePlayer === top()"
+                [targeting]="activeTarget() !== null"
+                [targetStackIds]="targetStackIds()"
+                [playerTargetable]="playerTargetable() && targetOwner() === top()"
                 (issue)="act($event)"
                 (menu)="openMenu($event.x, $event.y, $event.target)"
                 (preview)="onPreview($event)"
-                (pin)="pinTarget($event)" />
+                (pin)="pinTarget($event)"
+                (targetPick)="onTargetPick($event)" />
             }
 
             <div class="own-col">
@@ -332,10 +482,16 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               [player]="display()!.players[bottom()]"
               [owner]="bottom()"
               [active]="s.activePlayer === bottom()"
+              [targeting]="activeTarget() !== null"
+              [targetStackIds]="targetStackIds()"
+              [playerTargetable]="playerTargetable() && targetOwner() === bottom()"
+              [digivolveCosts]="digivolveCosts()"
               (issue)="act($event)"
               (menu)="openMenu($event.x, $event.y, $event.target)"
               (preview)="onPreview($event)"
-              (pin)="pinTarget($event)" />
+              (pin)="pinTarget($event)"
+              (targetPick)="onTargetPick($event)"
+              (dragHand)="dragHandUid.set($event)" />
             </div>
           </div>
 
@@ -348,7 +504,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                     [target]="pin.target"
                     [state]="pin.state"
                     [editable]="canEdit(pin.target.owner)"
+                    [force]="force()"
                     (issue)="act($event)"
+                    (attack)="beginAttack(pin.target)"
                     (closed)="unpin()" />
                 </div>
               }
@@ -357,16 +515,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                 [ngClass]="pinnedInfo() ? 'flex-[2] border-t border-line pt-2' : 'flex-1'">
                 <div class="flex items-center justify-between">
                   <span class="font-semibold text-fg">Log</span>
-                  <span class="text-muted">{{ s.log.length }} entries</span>
+                  <span class="text-muted">{{ s.log.length }} entries{{ session.localPlayer() === null ? ' · click to rewind' : '' }}</span>
                 </div>
-                <ol class="m-0 flex min-h-0 flex-1 list-none flex-col-reverse gap-1 overflow-y-auto p-0">
-                  @for (entry of s.log; track entry.seq) {
-                    <li class="border-b border-line/50 pb-1 text-muted">
-                      <span class="font-mono text-[10px] text-accent">T{{ entry.turn }}</span>
-                      <span class="text-fg"> {{ entry.text }}</span>
-                    </li>
-                  }
-                </ol>
+                <ng-container *ngTemplateOutlet="logTpl" />
               </div>
             </aside>
           } @else {
@@ -378,14 +529,7 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                 <span class="font-semibold text-fg">Log</span>
                 <span class="text-muted">{{ s.log.length }} entries</span>
               </div>
-              <ol class="m-0 flex min-h-0 flex-1 list-none flex-col-reverse gap-1 overflow-y-auto p-0">
-                @for (entry of s.log; track entry.seq) {
-                  <li class="border-b border-line/50 pb-1 text-muted">
-                    <span class="font-mono text-[10px] text-accent">T{{ entry.turn }}</span>
-                    <span class="text-fg"> {{ entry.text }}</span>
-                  </li>
-                }
-              </ol>
+              <ng-container *ngTemplateOutlet="logTpl" />
             </aside>
           }
         </div>
@@ -412,7 +556,9 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               [target]="pin.target"
               [state]="pin.state"
               [editable]="canEdit(pin.target.owner)"
+              [force]="force()"
               (issue)="act($event)"
+              (attack)="beginAttack(pin.target)"
               (closed)="unpin()" />
           </section>
         }
@@ -430,10 +576,14 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
               [owner]="top()"
               [mirrored]="true"
               [active]="s.activePlayer === top()"
+              [targeting]="activeTarget() !== null"
+              [targetStackIds]="targetStackIds()"
+              [playerTargetable]="playerTargetable() && targetOwner() === top()"
               (issue)="act($event)"
               (menu)="openMenu($event.x, $event.y, $event.target)"
               (preview)="onPreview($event)"
-              (pin)="pinTarget($event)" />
+              (pin)="pinTarget($event)"
+              (targetPick)="onTargetPick($event)" />
           </section>
         }
 
@@ -445,7 +595,7 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
             aria-label="More actions">
             <div class="mx-auto h-1 w-10 rounded-full bg-line" aria-hidden="true"></div>
             <div class="flex items-center justify-between">
-              <span class="font-semibold text-fg">Turn {{ s.turn }} · {{ s.players[s.activePlayer].name }} active</span>
+              <span class="font-semibold text-fg">Turn {{ s.turn }} · {{ s.players[s.activePlayer].name }} active · {{ rulesLabel() }}</span>
               <button type="button" class="btn-play" (click)="moreOpen.set(false)">Close</button>
             </div>
             <div class="flex flex-col gap-1.5">
@@ -488,9 +638,13 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
                   <button
                     type="button"
                     role="menuitem"
-                    class="block w-full rounded px-2 py-1.5 text-left hover:bg-white/10"
+                    class="block w-full rounded px-2 py-1.5 text-left hover:bg-white/10 disabled:cursor-not-allowed"
                     [class.text-red-300]="item.danger"
                     [class.text-fg]="!item.danger"
+                    [class.text-accent]="item.attack && !item.disabled"
+                    [class.opacity-45]="!!item.disabled"
+                    [disabled]="!!item.disabled"
+                    [attr.title]="item.disabled ?? null"
                     (click)="runItem(item)">
                     {{ item.label }}
                   </button>
@@ -502,6 +656,23 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
           </ul>
         }
       </div>
+
+      <!-- Notices: rejected actions and battle results. Non-blocking; tap to dismiss. -->
+      @if (notices().length > 0) {
+        <div class="pointer-events-none fixed inset-x-2 z-[510] flex flex-col items-center gap-1.5" [ngClass]="compact() ? 'top-[3.75rem]' : 'top-14'" aria-live="polite">
+          @for (n of notices(); track n.id) {
+            <button
+              type="button"
+              class="pointer-events-auto max-w-md rounded-lg border px-3 py-1.5 text-left text-xs shadow-lg"
+              [ngClass]="n.tone === 'error' ? 'border-red-500/60 bg-red-950/90 text-red-100' : 'border-line bg-ink-1/95 text-fg'"
+              (click)="dismissNotice(n.id)">
+              {{ n.text }}
+            </button>
+          }
+        </div>
+      }
+
+      <digimon-reminder-toasts [reminders]="s.reminders ?? []" [names]="names()" [top]="compact()" />
     } @else {
       <div class="flex h-[calc(var(--app-vh)-7.5rem)] flex-col items-center justify-center gap-3 p-6 text-center">
         <p class="m-0 text-muted">No game in progress.</p>
@@ -598,6 +769,71 @@ function targetExists(target: MenuTarget, state: GameState): boolean {
         border-color: var(--dc-accent, #38bdf8);
         color: var(--dc-accent, #38bdf8);
       }
+      /* Force is on: amber, so the override is never on by accident. */
+      .btn-force {
+        border-color: #f59e0b;
+        color: #fcd34d;
+      }
+      /* Subtle warning frame while the Force override is on (assisted mode). */
+      .force-border {
+        box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.55);
+        border-radius: 0.75rem;
+      }
+      .redo-icon {
+        transform: scaleX(-1);
+      }
+      .phase-flash {
+        animation: phase-flash 0.9s ease-out;
+      }
+      @keyframes phase-flash {
+        0% {
+          transform: scale(1.3);
+          box-shadow: 0 0 0 0 var(--dc-accent, #38bdf8);
+        }
+        60% {
+          box-shadow: 0 0 0 6px transparent;
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      .turn-banner {
+        animation: turn-banner 1s ease-out both;
+      }
+      @keyframes turn-banner {
+        0% {
+          opacity: 0;
+          transform: translateY(-8px) scale(0.95);
+        }
+        15%,
+        80% {
+          opacity: 1;
+          transform: none;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      .security-flip {
+        animation: security-flip 0.6s ease-out both;
+      }
+      @keyframes security-flip {
+        from {
+          transform: rotateY(180deg) scale(0.9);
+          opacity: 0.3;
+        }
+        to {
+          transform: rotateY(0) scale(1);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .phase-flash,
+        .turn-banner,
+        .security-flip {
+          animation: none;
+        }
+      }
       @media (max-width: 767px) {
         .btn-play {
           min-height: 2.5rem;
@@ -627,6 +863,7 @@ export class PlaymatComponent implements OnInit {
   protected readonly session = inject(GameSession);
   private readonly router = inject(Router);
   private readonly store = inject(DigimonCardStore);
+  private readonly match = inject(OnlineMatchService);
 
   protected readonly phases = PHASES;
   protected readonly memoryValues = MEMORY_VALUES;
@@ -634,11 +871,15 @@ export class PlaymatComponent implements OnInit {
   protected readonly memoryMin = MEMORY_MIN;
   protected readonly payAmounts = [1, 2, 3, 4, 5];
   protected readonly gainAmounts = [1, 2, 3];
-  protected readonly cardBack = 'assets/images/digimon-card-back.webp';
+  protected readonly cardBack = CARD_BACK;
+  protected readonly other = other;
+  protected readonly topName = topName;
 
   protected readonly state = this.session.state;
   protected readonly bottom = this.session.viewer;
   protected readonly top = computed<PlayerIndex>(() => (this.bottom() === 0 ? 1 : 0));
+  protected readonly force = this.session.force;
+  protected readonly online = this.session.online;
   protected readonly showAll = signal(false);
   protected readonly logOpen = signal(false);
   protected readonly moreOpen = signal(false);
@@ -665,6 +906,110 @@ export class PlaymatComponent implements OnInit {
 
   protected readonly previewWidth = HOVER_WIDTH_PX;
   protected readonly previewHeight = Math.round(HOVER_WIDTH_PX * CARD_RATIO);
+
+  // ---- table feedback --------------------------------------------------------------------------
+  protected readonly flashPhase = signal<Phase | null>(null);
+  protected readonly turnBanner = signal<string | null>(null);
+  protected readonly securityFlash = signal<SecurityFlash | null>(null);
+  protected readonly notices = signal<Notice[]>([]);
+  /** The hand card being dragged (uid), for digivolve highlights. */
+  protected readonly dragHandUid = signal<string | null>(null);
+  /** The log entry whose "Rewind to here" is open. */
+  protected readonly logSelected = signal<number | null>(null);
+  /** The attack being aimed, or null. */
+  private readonly targeting = signal<AttackPlan | null>(null);
+
+  /** Names for the reminder toasts and notices. */
+  protected readonly names = computed<[string, string]>(() => {
+    const s = this.state();
+    return [s?.players[0].name ?? 'Player 1', s?.players[1].name ?? 'Player 2'];
+  });
+  protected readonly rulesLabel = computed(() => (this.state()?.mode === 'assisted' ? 'Assisted' : 'Manual'));
+
+  /** The attack in progress, if its attacker is still on the board. */
+  protected readonly activeTarget = computed<AttackPlan | null>(() => {
+    const t = this.targeting();
+    const s = this.state();
+    if (!t || !s) return null;
+    return getStack(s.players[t.owner], t.stackId) ? t : null;
+  });
+  protected readonly targetOwner = computed<PlayerIndex | null>(() => {
+    const t = this.activeTarget();
+    return t ? other(t.owner) : null;
+  });
+  /** Battle stacks of the attacked player that the attack may target right now. */
+  protected readonly targetStackIds = computed<ReadonlySet<string>>(() => {
+    const t = this.activeTarget();
+    const s = this.state();
+    const out = new Set<string>();
+    if (!t || !s) return out;
+    for (const st of s.players[other(t.owner)].battle) {
+      if (assistedError(s, attackCmd(t, { kind: 'stack', stackId: st.stackId })) === null) out.add(st.stackId);
+    }
+    return out;
+  });
+  protected readonly playerTargetable = computed<boolean>(() => {
+    const t = this.activeTarget();
+    const s = this.state();
+    return !!t && !!s && assistedError(s, attackCmd(t, { kind: 'player' })) === null;
+  });
+  protected readonly targetHint = computed<string | null>(() => {
+    const t = this.activeTarget();
+    if (!t) return null;
+    if (this.targetStackIds().size === 0 && !this.playerTargetable()) {
+      return 'No valid target right now. Suspended opponent Digimon and the opponent themselves can be attacked.';
+    }
+    const parts: string[] = [];
+    if (this.targetStackIds().size > 0) parts.push('click a glowing opponent Digimon');
+    if (this.playerTargetable()) parts.push("click the opponent's security pile or name");
+    return `Choose a target: ${parts.join(', or ')}. Esc cancels.`;
+  });
+
+  /** The hand card the digivolve highlights are for: a dragged card, or the pinned one. */
+  private readonly handPick = computed<string | null>(() => {
+    const drag = this.dragHandUid();
+    if (drag) return drag;
+    const pin = this.pinned();
+    return pin && pin.kind === 'card' && pin.zone === 'hand' && pin.owner === this.bottom() ? pin.uid : null;
+  });
+  /** Stacks of this device's board that the hand Digimon can digivolve onto, with the memory cost. */
+  protected readonly digivolveCosts = computed<ReadonlyMap<string, number>>(() => {
+    const out = new Map<string, number>();
+    const s = this.state();
+    const uid = this.handPick();
+    if (!s || !uid || s.mode !== 'assisted') return out;
+    const owner = this.bottom();
+    const p = s.players[owner];
+    const card = p.hand.find((c) => c.uid === uid);
+    const info = card ? cardInfo(card.cardId) : undefined;
+    if (!info || info.kind !== 'digimon') return out;
+    for (const st of [...(p.breeding ? [p.breeding] : []), ...p.battle]) {
+      const cost = digivolveCost(st, info);
+      if (cost === null) continue;
+      if (assistedError(s, { type: 'digivolve', player: owner, handUid: uid, onto: st.stackId }) === null) out.set(st.stackId, cost);
+    }
+    return out;
+  });
+
+  /** Outcome of a finished game: a winner (security, deck-out or resignation). */
+  protected readonly outcome = computed<Outcome | null>(() => {
+    const s = this.state();
+    if (!s) return null;
+    const local = this.session.localPlayer();
+    const resigned = this.match.resignedBy();
+    let winner: PlayerIndex | null = null;
+    let reason = '';
+    if (s.winner !== null && s.winner !== undefined) {
+      winner = s.winner;
+      reason = s.winReason ?? 'The game is over.';
+    } else if (resigned !== null) {
+      winner = other(resigned);
+      reason = `${s.players[resigned].name} resigned.`;
+    }
+    if (winner === null) return null;
+    if (local === null) return { headline: `${s.players[winner].name} wins`, reason };
+    return { headline: winner === local ? 'Victory' : 'Defeat', reason };
+  });
 
   /** What the current viewer may see. Opponent hidden info is redacted unless "show all" is on. */
   protected readonly display = computed<GameState | null>(() => {
@@ -701,12 +1046,41 @@ export class PlaymatComponent implements OnInit {
     return targetExists(target, s) ? { target, state: s } : null;
   });
 
+  private prevTurn: number | null = null;
+  private prevPhase: Phase | null = null;
+  private seenCombat: number | null = null;
+  private lastErrorCount = this.session.errorCount();
+  private noticeSeq = 0;
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private securityTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     setCardNameResolver((cardId) => this.store.cardsMap().get(cardId)?.name.english);
     // Assisted rules read card text, cost and colours from the same card list the board uses.
     effect(() => {
       const cards = [...this.store.cardsMap().values()] as unknown as Record<string, unknown>[];
       if (cards.length > 0) registerCardRecords(cards);
+    });
+    // Phase flash and turn banner on every change of the table.
+    effect(() => {
+      const s = this.state();
+      if (s) untracked(() => this.onTableChange(s.turn, s.phase, s.activePlayer));
+    });
+    // Battle and security results.
+    effect(() => {
+      const combat = this.state()?.lastCombat ?? null;
+      untracked(() => this.onCombat(combat));
+    });
+    // Rejections from the session, shown as toasts. Each rejection counts, so repeats still show.
+    effect(() => {
+      const count = this.session.errorCount();
+      untracked(() => {
+        if (count === this.lastErrorCount) return;
+        this.lastErrorCount = count;
+        const text = this.session.lastError();
+        if (text) this.notice(text, 'error');
+      });
     });
   }
 
@@ -719,6 +1093,10 @@ export class PlaymatComponent implements OnInit {
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
+      if (this.activeTarget()) {
+        this.cancelAttack();
+        return;
+      }
       this.closeMenu();
       this.unpin();
       this.endTurnOpen.set(false);
@@ -772,6 +1150,10 @@ export class PlaymatComponent implements OnInit {
     this.act(cmd);
   }
 
+  toggleForce(): void {
+    this.session.setForce(!this.force());
+  }
+
   undo(): void {
     this.closeMenu();
     this.session.undo();
@@ -787,6 +1169,11 @@ export class PlaymatComponent implements OnInit {
     return this.session.undoBlockReason() ?? 'Undo (Ctrl+Z)';
   }
 
+  /** Tooltip for the redo buttons: the reason when redo is blocked. */
+  protected redoTitle(): string {
+    return this.session.redoBlockReason() ?? 'Redo (Ctrl+Y)';
+  }
+
   /** Online each device answers only its own decisions. Solo answers for both seats. */
   protected canDecide(owner: PlayerIndex): boolean {
     const local = this.session.localPlayer();
@@ -799,8 +1186,74 @@ export class PlaymatComponent implements OnInit {
     this.act({ type: 'resolveBlock', player: pending.owner, blockerStackId });
   }
 
+  protected findStack(s: GameState, owner: PlayerIndex, stackId: string): Stack | null {
+    return getStack(s.players[owner], stackId);
+  }
+
+  protected dpOfStack(s: GameState, owner: PlayerIndex, stackId: string): number {
+    const st = getStack(s.players[owner], stackId);
+    return st ? stackDp(st) : 0;
+  }
+
+  protected cardImage(cardId: string): string {
+    return this.store.cardsMap().get(cardId)?.cardImage || CARD_BACK;
+  }
+
+  /** Starts target selection for an attack with a battle Digimon. Blocked attacks say why. */
+  protected beginAttack(target: MenuTarget): void {
+    this.closeMenu();
+    this.unpin();
+    if (target.kind !== 'stack') return;
+    const s = this.state();
+    if (!s) return;
+    const reason = attackReason(s, target.owner, target.stackId);
+    if (reason) {
+      this.notice(reason, 'error');
+      return;
+    }
+    this.targeting.set({ owner: target.owner, stackId: target.stackId });
+    if (this.compact()) this.opponentOpen.set(true);
+  }
+
+  protected cancelAttack(): void {
+    this.targeting.set(null);
+  }
+
+  /** A valid target was clicked (stack id, or null for the player). Sends the attack. */
+  protected onTargetPick(stackId: string | null): void {
+    const t = this.activeTarget();
+    if (!t) return;
+    this.targeting.set(null);
+    this.act(attackCmd(t, stackId === null ? { kind: 'player' } : { kind: 'stack', stackId }));
+  }
+
+  protected rematch(): void {
+    this.targeting.set(null);
+    this.logSelected.set(null);
+    this.session.rematch();
+  }
+
   protected backToLobby(): void {
     void this.router.navigateByUrl('/play');
+  }
+
+  protected rewindable(seq: number): boolean {
+    return this.session.rewindTargetFor(seq) !== null;
+  }
+
+  protected selectLog(seq: number): void {
+    this.logSelected.update((v) => (v === seq ? null : seq));
+  }
+
+  protected rewindHere(seq: number): void {
+    if (this.session.rewindToLogEntry(seq)) {
+      this.logSelected.set(null);
+      this.notice('Rewound. Redo brings the steps back.', 'info');
+    }
+  }
+
+  dismissNotice(id: number): void {
+    this.notices.update((list) => list.filter((n) => n.id !== id));
   }
 
   nextPhase(): void {
@@ -887,7 +1340,7 @@ export class PlaymatComponent implements OnInit {
     const s = this.state();
     if (!s) return;
     this.hideHover();
-    this.menu.set({ x, y, target, items: menuItemsFor(target, s) });
+    this.menu.set({ x, y, target, items: menuItemsFor(target, s, this.force()) });
   }
 
   closeMenu(): void {
@@ -897,6 +1350,10 @@ export class PlaymatComponent implements OnInit {
   runItem(item: MenuItem): void {
     const m = this.menu();
     this.closeMenu();
+    if (item.attack && m) {
+      this.beginAttack(m.target);
+      return;
+    }
     if (item.inspect && m) {
       this.pinTarget(m.target);
       return;
@@ -912,6 +1369,95 @@ export class PlaymatComponent implements OnInit {
   menuTop(y: number): number {
     const max = typeof window !== 'undefined' ? window.innerHeight - 320 : y;
     return Math.max(4, Math.min(y, max));
+  }
+
+  /** Phase flash when the phase changes, turn banner when the turn changes. The first look only records. */
+  private onTableChange(turn: number, phase: Phase, active: PlayerIndex): void {
+    if (this.prevTurn === null || this.prevPhase === null) {
+      this.prevTurn = turn;
+      this.prevPhase = phase;
+      return;
+    }
+    if (phase !== this.prevPhase) {
+      this.flashPhase.set(phase);
+      if (this.flashTimer !== null) clearTimeout(this.flashTimer);
+      this.flashTimer = setTimeout(() => {
+        this.flashTimer = null;
+        this.flashPhase.set(null);
+      }, PHASE_FLASH_MS);
+    }
+    if (turn !== this.prevTurn) {
+      const viewer = this.session.localPlayer();
+      const s = this.state();
+      const text =
+        viewer === null
+          ? `${s?.players[active].name ?? 'Next player'}'s turn`
+          : active === viewer
+            ? 'Your turn'
+            : "Opponent's turn";
+      this.turnBanner.set(text);
+      if (this.turnTimer !== null) clearTimeout(this.turnTimer);
+      this.turnTimer = setTimeout(() => {
+        this.turnTimer = null;
+        this.turnBanner.set(null);
+      }, TURN_BANNER_MS);
+    }
+    this.prevTurn = turn;
+    this.prevPhase = phase;
+  }
+
+  /** A new battle result becomes a toast. A new security check is shown big on screen. Older results are skipped. */
+  private onCombat(combat: CombatResult | null): void {
+    if (!combat) return;
+    if (this.seenCombat === null) {
+      this.seenCombat = combat.seq;
+      return;
+    }
+    if (combat.seq <= this.seenCombat) return;
+    this.seenCombat = combat.seq;
+    if (combat.kind === 'battle') {
+      this.notice(this.battleText(combat), 'info');
+      return;
+    }
+    this.showSecurity(combat);
+  }
+
+  private battleText(c: CombatResult): string {
+    const dd = c.defenderDp ?? 0;
+    let outcome: string;
+    if (c.attackerDeleted && c.defenderDeleted) outcome = 'Both are deleted';
+    else if (c.attackerDeleted) outcome = `${c.attackerName} is deleted`;
+    else if (c.defenderDeleted) outcome = `${c.defenderName} is deleted`;
+    else outcome = 'Neither is deleted';
+    return `Battle: ${c.attackerName} (${c.attackerDp} DP) vs ${c.defenderName} (${dd} DP). ${outcome}.`;
+  }
+
+  private showSecurity(c: CombatResult): void {
+    const cardId = c.revealedCardId ?? '';
+    const kind = cardInfo(cardId)?.kind;
+    const name = cardLabel(cardId);
+    let lines: string[];
+    if (c.defenderDp !== null) {
+      lines = [
+        `Security: ${name}, ${c.defenderDp} DP`,
+        `Attacker: ${c.attackerName}, ${c.attackerDp} DP`,
+        c.attackerDeleted ? `${c.attackerName} is deleted.` : `${c.attackerName} survives.`,
+      ];
+    } else {
+      lines = [`Security: ${name} (${kind === 'option' ? 'Option' : 'Tamer'}). Its effect is in the reminders.`];
+    }
+    this.securityFlash.set({ cardId, lines });
+    if (this.securityTimer !== null) clearTimeout(this.securityTimer);
+    this.securityTimer = setTimeout(() => {
+      this.securityTimer = null;
+      this.securityFlash.set(null);
+    }, SECURITY_FLASH_MS);
+  }
+
+  private notice(text: string, tone: 'error' | 'info'): void {
+    const id = ++this.noticeSeq;
+    this.notices.update((list) => [...list, { id, text, tone }].slice(-MAX_NOTICES));
+    setTimeout(() => this.dismissNotice(id), NOTICE_MS);
   }
 
   private scheduleHover(cardId: string | null): void {

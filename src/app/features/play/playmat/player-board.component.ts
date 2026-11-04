@@ -1,4 +1,4 @@
-import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, computed, inject, input } from '@angular/core';
 import { DigimonCardStore } from '../../../store/digimon-card.store';
@@ -24,6 +24,21 @@ const LONG_PRESS_MS = 450;
 const DRAG_SLOP_PX = 6;
 /** Deck counts at or below this are shown as a warning. */
 const DECK_WARN_AT = 5;
+
+/**
+ * A battle stack dragged onto the opponent's board: onto one of their battle stacks, or onto their security pile.
+ * The engine checks the rest (suspended target, eligible attacker, turn). Null for any other drop.
+ */
+export function attackForDrop(drag: DragData, target: DropData): Command | null {
+  if (drag.kind !== 'stack' || drag.from !== 'battle' || drag.owner === target.owner) return null;
+  if (target.zone === 'security') {
+    return { type: 'attack', player: drag.owner, attackerStackId: drag.stackId, target: { kind: 'player' } };
+  }
+  if (target.zone === 'battle' && target.stackId) {
+    return { type: 'attack', player: drag.owner, attackerStackId: drag.stackId, target: { kind: 'stack', stackId: target.stackId } };
+  }
+  return null;
+}
 
 /** What the pointer is over: the visible card id (null when hidden) and the stack or card it belongs to. */
 export interface HoverInfo {
@@ -57,8 +72,9 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
 
   const uid = drag.uid;
   if (target.stackId) {
-    // Only hand cards can digivolve, and only onto a battle stack.
-    return target.zone === 'battle' && drag.from === 'hand' ? { type: 'digivolve', player, handUid: uid, onto: target.stackId } : null;
+    // Only hand cards can digivolve, and only onto a battle or breeding stack.
+    const onStack = target.zone === 'battle' || target.zone === 'breeding';
+    return onStack && drag.from === 'hand' ? { type: 'digivolve', player, handUid: uid, onto: target.stackId } : null;
   }
   if (drag.from === target.zone) return null;
 
@@ -83,15 +99,14 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
   selector: 'digimon-player-board',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [NgTemplateOutlet, CdkDropListGroup, CdkDropList, CdkDrag, PlayCardComponent, PlayStackComponent],
+  imports: [NgTemplateOutlet, CdkDropList, CdkDrag, PlayCardComponent, PlayStackComponent],
   template: `
     <section
-      cdkDropListGroup
       class="board-section flex flex-1 flex-col gap-2 rounded-xl border bg-ink-1 p-2 transition-colors md:p-3"
       [class.border-accent]="active()"
       [class.border-line]="!active()">
       <header class="flex items-center justify-between gap-2 text-xs text-muted" [class.flex-row-reverse]="mirrored()">
-        <span class="flex items-center gap-2 font-semibold text-fg">
+        <span class="flex items-center gap-2 font-semibold text-fg" [class.target-ok]="playerTargetable()" (click)="pickPlayer()">
           <span class="rounded bg-ink-2 px-2 py-0.5 font-mono">P{{ owner() + 1 }}</span>
           {{ player().name }}
           @if (active()) {
@@ -116,7 +131,13 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         <!-- Left: security and trash -->
         <div class="flex shrink-0 flex-col gap-2">
           <div class="zone-label">Security {{ player().security.length }}</div>
-          <div cdkDropList [cdkDropListData]="dropData('security')" (cdkDropListDropped)="onDrop($event)" class="zone-slot">
+          <div
+            cdkDropList
+            [cdkDropListData]="dropData('security')"
+            (cdkDropListDropped)="onDrop($event)"
+            (click)="pickPlayer()"
+            class="zone-slot"
+            [class.target-ok]="playerTargetable()">
             @if (securityTop(); as sec) {
               <div
                 cdkDrag
@@ -166,7 +187,11 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
           <div class="flex gap-2 md:gap-3" [class.flex-row-reverse]="mirrored()">
             <div class="flex shrink-0 flex-col gap-1">
               <div class="zone-label">Breeding</div>
-              <div cdkDropList [cdkDropListData]="dropData('breeding')" (cdkDropListDropped)="onDrop($event)" class="zone-slot">
+              <div
+                cdkDropList
+                [cdkDropListData]="player().breeding ? dropData('breeding', player().breeding!.stackId) : dropData('breeding')"
+                (cdkDropListDropped)="onDrop($event)"
+                class="zone-slot">
                 @if (player().breeding; as b) {
                   <ng-container *ngTemplateOutlet="stackTpl; context: { $implicit: b, zone: 'breeding' }" />
                 } @else {
@@ -216,7 +241,9 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
                 cdkDropList
                 [cdkDropListData]="dropData('battle', s.stackId)"
                 (cdkDropListDropped)="onDrop($event)"
-                class="shrink-0 rounded-lg">
+                class="shrink-0 rounded-lg"
+                [class.target-ok]="targetStackIds().has(s.stackId)"
+                [class.target-dim]="targeting() && !targetStackIds().has(s.stackId)">
                 <ng-container *ngTemplateOutlet="stackTpl; context: { $implicit: s, zone: 'battle' }" />
               </div>
             }
@@ -311,7 +338,8 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
             (pointerup)="release()"
             (pointerleave)="release()"
             (pointercancel)="release()"
-            (cdkDragStarted)="release()"
+            (cdkDragStarted)="release(); dragHand.emit(c.uid)"
+            (cdkDragEnded)="dragHand.emit(null)"
             (contextmenu)="ctx($event, cardTarget(c.uid, 'hand'))"
             (mouseenter)="hover(c.cardId, cardTarget(c.uid, 'hand'))"
             (mouseleave)="hover(null)"
@@ -327,8 +355,9 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
       <div
         cdkDrag
         [cdkDragData]="stackDrag(s, zone)"
-        class="cursor-pointer"
+        class="relative cursor-pointer rounded-lg"
         data-keep-pin
+        [class.digi-ok]="digivolveCosts().has(s.stackId)"
         (click)="pinClick($event, stackTarget(s.stackId, zone))"
         (dblclick)="toggleSuspend(s)"
         (pointerdown)="press($event, stackTarget(s.stackId, zone))"
@@ -340,6 +369,9 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         (mouseenter)="hover(s.faceDown ? null : topOf(s), stackTarget(s.stackId, zone))"
         (mouseleave)="hover(null)">
         <digimon-play-stack [stack]="s" />
+        @if (digivolveCosts().get(s.stackId); as cost) {
+          <span class="digi-badge">Digivolve {{ cost }}</span>
+        }
       </div>
     </ng-template>
   `,
@@ -403,6 +435,46 @@ export function commandForDrop(drag: DragData, target: DropData): Command | null
         opacity: 0.9;
         pointer-events: none;
       }
+      /* Target selection (attack): valid targets glow, the rest dim. */
+      .target-ok {
+        outline: 2px solid var(--dc-accent, #38bdf8);
+        outline-offset: 2px;
+        border-radius: 0.5rem;
+        animation: target-pulse 1.2s ease-in-out infinite;
+        cursor: crosshair;
+      }
+      .target-dim {
+        opacity: 0.45;
+      }
+      /* Digivolve targets for the Digimon in hand (pinned or dragged). */
+      .digi-ok {
+        box-shadow: 0 0 0 2px var(--dc-accent, #38bdf8);
+      }
+      .digi-badge {
+        position: absolute;
+        top: -0.35rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 5;
+        white-space: nowrap;
+        border-radius: 999px;
+        background: var(--dc-accent, #38bdf8);
+        color: var(--dc-accent-ink, #0f172a);
+        padding: 0 0.4rem;
+        font-size: 0.6rem;
+        font-weight: 700;
+        line-height: 1.2rem;
+        pointer-events: none;
+      }
+      @keyframes target-pulse {
+        0%,
+        100% {
+          outline-color: var(--dc-accent, #38bdf8);
+        }
+        50% {
+          outline-color: transparent;
+        }
+      }
       .cdk-drag-placeholder {
         opacity: 0.25;
       }
@@ -462,6 +534,14 @@ export class PlayerBoardComponent {
   readonly owner = input.required<PlayerIndex>();
   readonly mirrored = input(false);
   readonly active = input(false);
+  /** Attack target selection is running: valid stacks and the player are highlighted and clicks pick them. */
+  readonly targeting = input(false);
+  /** Battle stacks on this board that are valid attack targets while targeting. */
+  readonly targetStackIds = input<ReadonlySet<string>>(new Set());
+  /** True when this board's player can be attacked directly (while targeting). */
+  readonly playerTargetable = input(false);
+  /** Stacks on this board that a Digimon in hand can digivolve onto, with the memory cost. */
+  readonly digivolveCosts = input<ReadonlyMap<string, number>>(new Map());
 
   /** Emitted for every board action, already translated into a core command. */
   @Output() readonly issue = new EventEmitter<Command>();
@@ -471,6 +551,10 @@ export class PlayerBoardComponent {
   @Output() readonly preview = new EventEmitter<HoverInfo | null>();
   /** Emitted on a click (not a drag) on a visible card or stack. The playmat pins it in the inspect panel. */
   @Output() readonly pin = new EventEmitter<MenuTarget>();
+  /** Target chosen while targeting: a stack id, or null for the player. */
+  @Output() readonly targetPick = new EventEmitter<string | null>();
+  /** A hand card drag started (uid) or ended (null). */
+  @Output() readonly dragHand = new EventEmitter<string | null>();
 
   protected readonly hiddenId = HIDDEN_CARD_ID;
   protected readonly handOverlap = HAND_OVERLAP;
@@ -512,17 +596,33 @@ export class PlayerBoardComponent {
 
   onDrop(event: CdkDragDrop<DropData, DropData, DragData>): void {
     if (event.previousContainer === event.container) return;
-    const cmd = commandForDrop(event.item.data as DragData, event.container.data);
+    const drag = event.item.data as DragData;
+    const cmd = commandForDrop(drag, event.container.data) ?? attackForDrop(drag, event.container.data);
     if (cmd) this.issue.emit(cmd);
   }
 
   /** Double-click on a stack toggles suspend. A single click pins the stack instead. */
   toggleSuspend(stack: Stack): void {
+    if (this.targeting()) return;
     this.issue.emit({ type: stack.suspended ? 'unsuspend' : 'suspend', player: this.owner(), stackId: stack.stackId });
   }
 
-  /** A click pins the target. Ignored after a long-press (the menu is open) or when the pointer moved (a drag). */
+  /** Attack target click on the player (security pile or name). Ignored unless this board can be attacked. */
+  pickPlayer(): void {
+    if (this.targeting() && this.playerTargetable()) this.targetPick.emit(null);
+  }
+
+  /**
+   * A click pins the target. Ignored after a long-press (the menu is open) or when the pointer moved (a drag).
+   * While targeting, a click picks a valid target instead and never pins.
+   */
   pinClick(event: MouseEvent, target: MenuTarget): void {
+    if (this.targeting()) {
+      event.stopPropagation();
+      if (target.kind === 'stack' && this.targetStackIds().has(target.stackId)) this.targetPick.emit(target.stackId);
+      if (target.kind === 'card' && target.zone === 'security' && this.playerTargetable()) this.targetPick.emit(null);
+      return;
+    }
     if (this.longPressed) {
       this.longPressed = false;
       return;

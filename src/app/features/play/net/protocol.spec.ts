@@ -114,3 +114,15 @@ describe('decodeNetMessage (untrusted input)', () => {
     expect(decodeNetMessage(JSON.stringify({ t: 'cmd', seq: 1, cmd: 'y'.repeat(20000) }))).toBeNull();
   });
 });
+
+describe('setup message rules mode', () => {
+  it('keeps the host rules mode and treats anything else as absent', () => {
+    const board = { id: 0, name: 'Host' };
+    const assisted = decodeNetMessage(JSON.stringify({ t: 'setup', board, mode: 'assisted' }));
+    expect(assisted).toEqual({ t: 'setup', board, mode: 'assisted' });
+    const manual = decodeNetMessage(JSON.stringify({ t: 'setup', board, mode: 'manual' }));
+    expect(manual).toEqual({ t: 'setup', board, mode: 'manual' });
+    const odd = decodeNetMessage(JSON.stringify({ t: 'setup', board, mode: 'godmode' }));
+    expect(odd).toEqual({ t: 'setup', board });
+  });
+});

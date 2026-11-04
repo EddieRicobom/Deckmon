@@ -99,6 +99,25 @@ export interface Reminder {
 
 export const MAX_REMINDERS = 40;
 
+/**
+ * The latest battle or security check, for the table to show. `seq` is the log length when it happened, so a new
+ * result always has a larger seq. Both peers compute the same record from the same command.
+ */
+export interface CombatResult {
+  seq: number;
+  kind: 'battle' | 'security';
+  attacker: PlayerIndex;
+  attackerName: string;
+  attackerDp: number;
+  /** Battle: the defending Digimon. Security: the revealed security card (cardId may be hidden). */
+  defenderName: string;
+  defenderDp: number | null;
+  /** Card id of the revealed security card, when the record is a security check. */
+  revealedCardId?: string;
+  attackerDeleted: boolean;
+  defenderDeleted: boolean;
+}
+
 export interface GameState {
   /** Rules mode. Absent on states created before the rules layer existed, which means manual. */
   mode?: RulesMode;
@@ -109,6 +128,8 @@ export interface GameState {
   winReason?: string | null;
   /** Effect reminders, newest last, capped at MAX_REMINDERS. */
   reminders?: Reminder[];
+  /** The latest battle or security check (assisted mode). */
+  lastCombat?: CombatResult | null;
   /** Original seed, kept for replay / debugging. Redacted for opponents by view.ts. */
   seed: number;
   /** Current PRNG state. Redacted for opponents by view.ts. */
