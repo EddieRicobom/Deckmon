@@ -40,13 +40,13 @@ $lit: '.tilt:is(:hover, :focus-visible, .is-active, .is-focus)';
       background-position-y: 0;
     }
     to {
-      background-position-y: 160px;
+      background-position-y: 170px;
     }
   }
 
   @keyframes holo-fall {
     to {
-      background-position-y: 220px;
+      background-position-y: 240px;
     }
   }
 
@@ -135,21 +135,22 @@ $lit: '.tilt:is(:hover, :focus-visible, .is-active, .is-focus)';
   .sparkle {
     overflow: hidden;
     // Back layer: sparse, huge (~34px in card scale), faint digits drifting slowly.
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='220' font-family='monospace' font-weight='700' font-size='34'><g fill='%237CFFB2'><text x='8' y='40' opacity='.5'>1</text><text x='70' y='120' opacity='.35'>0</text><text x='30' y='190' opacity='.45'>1</text></g></svg>");
-    background-size: 120px 220px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='240' font-family='monospace' font-weight='800' font-size='38'><g fill='%2386FFC0'><text x='6' y='40' opacity='.9'>1</text><text x='78' y='92' opacity='.7'>0</text><text x='36' y='150' opacity='.85'>1</text><text x='100' y='210' opacity='.6'>1</text><text x='10' y='228' opacity='.5'>0</text></g></svg>");
+    background-size: 140px 240px;
     background-position: calc(100% - var(--posx) * 1%) calc(100% - var(--posy) * 1%);
-    mix-blend-mode: color-dodge;
-    filter: drop-shadow(0 0 2px rgba(110, 255, 170, 0.8));
+    // screen keeps the digits visible on both dark and bright art (color-dodge made them vanish).
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 4px rgba(110, 255, 170, 0.9)) drop-shadow(0 0 10px rgba(60, 220, 255, 0.5));
 
     &::after {
       content: '';
       position: absolute;
       inset: 0;
       // Front layer: sparse, bold ~20px digits raining faster than the back layer.
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='90' height='160' font-family='monospace' font-weight='700' font-size='20'><g fill='%2367E8F9'><text x='6' y='22' opacity='.8'>1</text><text x='50' y='70' opacity='.6'>0</text><text x='18' y='118' opacity='.9'>1</text></g><text x='62' y='142' fill='%23ECFEFF'>0</text></svg>");
-      background-size: 90px 160px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='170' font-family='monospace' font-weight='800' font-size='24'><g fill='%2367E8F9'><text x='4' y='24' opacity='.35'>0</text><text x='4' y='50' opacity='.6'>1</text><text x='4' y='76'>1</text><text x='52' y='96' opacity='.35'>1</text><text x='52' y='122' opacity='.65'>0</text></g><text x='52' y='148' fill='%23F0FFFF'>1</text><text x='4' y='102' fill='%23F0FFFF'>0</text></svg>");
+      background-size: 96px 170px;
       background-position: calc(var(--posx) * 0.4%) 0;
-      opacity: 0.85;
+      opacity: 1;
     }
   }
 
@@ -173,7 +174,7 @@ $lit: '.tilt:is(:hover, :focus-visible, .is-active, .is-focus)';
 
   .holo-sr .sparkle {
     display: block;
-    opacity: calc(0.3 + min(var(--hyp), 1) * 0.35);
+    opacity: calc(0.55 + min(var(--hyp), 1) * 0.35);
   }
 
   .holo-sr .fx {
@@ -203,7 +204,7 @@ $lit: '.tilt:is(:hover, :focus-visible, .is-active, .is-focus)';
 
   .holo-sec .sparkle {
     display: block;
-    opacity: calc(0.3 + min(var(--hyp), 1) * 0.35);
+    opacity: calc(0.55 + min(var(--hyp), 1) * 0.35);
     filter: sepia(1) saturate(5) hue-rotate(-12deg) brightness(1.1);
   }
 
